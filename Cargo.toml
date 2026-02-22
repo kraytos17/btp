@@ -1,0 +1,36 @@
+[package]
+name = "btp"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "btp"
+test = true
+
+[[bin]]
+name = "btp"
+test = false
+bench = false
+required-features = ["embedded"]
+
+[features]
+default = ["embedded"]
+embedded = ["rp2040-hal", "rp-pico", "cortex-m", "cortex-m-rt", "panic-halt"]
+std = []
+
+[dependencies]
+rp2040-hal = { version = "0.10", features = ["rt", "critical-section-impl"], optional = true }
+rp-pico = { version = "0.9", optional = true }
+cortex-m = { version = "0.7", optional = true }
+cortex-m-rt = { version = "0.7", optional = true }
+panic-halt = { version = "0.2", optional = true }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+debug = true
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
