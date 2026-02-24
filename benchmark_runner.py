@@ -145,7 +145,7 @@ def plot_mode_comparison(data):
         x1,
         present_mbps,
         0.35,
-        color=[COLORS[m] for m in present_modes],
+        color="#E63946",
         edgecolor="black",
         linewidth=1.2,
         label="PRESENT",
@@ -154,7 +154,7 @@ def plot_mode_comparison(data):
         x2,
         speck_mbps,
         0.35,
-        color=[COLORS[m] for m in speck_modes],
+        color="#2A9D8F",
         edgecolor="black",
         linewidth=1.2,
         label="SPECK",
@@ -240,23 +240,24 @@ def plot_scaling_analysis(data):
     scaling = data["scaling"]
 
     datasets = [
-        ("present_80", "PRESENT-80", "#E63946"),
-        ("present_128", "PRESENT-128", "#F4A261"),
-        ("speck64_128", "SPECK64/128", "#264653"),
-        ("ascon_128", "ASCON-128", "#9B5DE5"),
+        ("present_80", "PRESENT-80", "#E63946", "o", "-"),
+        ("present_128", "PRESENT-128", "#E63946", "s", "--"),
+        ("speck64_128", "SPECK64/128", "#264653", "^", "-"),
+        ("ascon_128", "ASCON-128", "#9B5DE5", "d", "-"),
     ]
 
-    for key, label, color in datasets:
+    for key, label, color, marker, linestyle in datasets:
         points = scaling[key]
         x_vals = [int(p[0]) for p in points]
         y_vals = [p[1] for p in points]
         ax.plot(
             x_vals,
             y_vals,
-            marker="o",
-            markersize=8,
+            marker=marker,
+            markersize=10,
             linewidth=2.5,
             color=color,
+            linestyle=linestyle,
             label=label,
         )
 
@@ -264,10 +265,13 @@ def plot_scaling_analysis(data):
     ax.set_ylabel("Time (ns)", fontsize=12, fontweight="bold")
     ax.set_title("Performance Scaling with Data Size", fontsize=14, fontweight="bold")
     ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
     ax.set_xticks([8, 16, 32, 64, 128, 256])
     ax.set_xticklabels(["8", "16", "32", "64", "128", "256"])
+    ax.set_xlim(4, 512)
+    ax.set_ylim(100, 1000000)
     ax.legend(loc="upper left", fontsize=10)
-    ax.grid(True, alpha=0.3, linestyle="--")
+    ax.grid(True, alpha=0.3, linestyle="--", which="both")
     ax.set_axisbelow(True)
 
     plt.tight_layout()
