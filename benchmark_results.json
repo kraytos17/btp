@@ -1,168 +1,215 @@
 {
   "block_ciphers": {
     "present_80": {
-      "ns_per_block": 23665,
-      "cpb": 2958.125,
-      "mbps": 0.3380519754912318
+      "ns_per_block": 15923,
+      "cpb": 1990.375,
+      "mbps": 0.5024178860767443
     },
     "present_128": {
-      "ns_per_block": 24542,
-      "cpb": 3067.75,
-      "mbps": 0.3259718034390025
+      "ns_per_block": 15899,
+      "cpb": 1987.375,
+      "mbps": 0.5031763003962514
     },
     "speck64_96": {
-      "ns_per_block": 336,
-      "cpb": 42.0,
-      "mbps": 23.80952380952381
+      "ns_per_block": 234,
+      "cpb": 29.25,
+      "mbps": 34.18803418803419
     },
     "speck64_128": {
-      "ns_per_block": 338,
-      "cpb": 42.25,
-      "mbps": 23.668639053254438
+      "ns_per_block": 235,
+      "cpb": 29.375,
+      "mbps": 34.04255319148936
     },
     "ascon_128": {
-      "ns_per_block": 2117,
-      "cpb": 132.3125,
-      "mbps": 7.557864903164856
+      "ns_per_block": 1452,
+      "cpb": 90.75,
+      "mbps": 11.019283746556473
     }
   },
   "modes": {
     "present_ecb": {
-      "ns_per_block": 189237,
-      "cpb": 2956.828125,
-      "mbps": 0.3382002462520543
+      "ns_per_block": 127731,
+      "cpb": 1995.796875,
+      "mbps": 0.5010529941830879
     },
     "present_cbc": {
-      "ns_per_block": 190391,
-      "cpb": 2974.859375,
-      "mbps": 0.33615034324101456
+      "ns_per_block": 127304,
+      "cpb": 1989.125,
+      "mbps": 0.5027336140262678
     },
     "speck_ecb": {
-      "ns_per_block": 3196,
-      "cpb": 49.9375,
-      "mbps": 20.02503128911139
+      "ns_per_block": 2302,
+      "cpb": 35.96875,
+      "mbps": 27.80191138140747
     },
     "speck_cbc": {
-      "ns_per_block": 3809,
-      "cpb": 59.515625,
-      "mbps": 16.80231031766868
+      "ns_per_block": 2600,
+      "cpb": 40.625,
+      "mbps": 24.615384615384617
     },
     "speck_ctr": {
-      "ns_per_block": 3797,
-      "cpb": 59.328125,
-      "mbps": 16.85541216750066
+      "ns_per_block": 2760,
+      "cpb": 43.125,
+      "mbps": 23.18840579710145
     }
   },
   "ascon_phases": {
-    "init": 591,
-    "absorb": 294,
-    "encrypt": 673,
-    "finalize": 596
+    "init": 425,
+    "absorb": 213,
+    "encrypt": 475,
+    "finalize": 432
   },
   "scaling": {
     "present_80": [
       [
         "8",
-        23731
+        15899
       ],
       [
         "16",
-        47502
+        31946
       ],
       [
         "32",
-        94392
+        63587
       ],
       [
         "64",
-        190474
+        127264
       ],
       [
         "128",
-        389378
+        254977
       ],
       [
         "256",
-        745631
+        509750
       ]
     ],
     "present_128": [
       [
         "8",
-        25765
+        15956
       ],
       [
         "16",
-        47459
+        32007
       ],
       [
         "32",
-        95084
+        63829
       ],
       [
         "64",
-        185393
+        127547
       ],
       [
         "128",
-        375027
+        255154
       ],
       [
         "256",
-        743965
+        510485
       ]
     ],
     "speck64_128": [
       [
         "8",
-        477
+        306
       ],
       [
         "16",
-        991
+        605
       ],
       [
         "32",
-        1677
+        1173
       ],
       [
         "64",
-        3204
+        2340
       ],
       [
         "128",
-        6384
+        4631
       ],
       [
         "256",
-        13845
+        9939
       ]
     ],
     "ascon_128": [
       [
         "8",
-        1876
+        1240
       ],
       [
         "16",
-        2145
+        1470
       ],
       [
         "32",
-        2720
+        1888
       ],
       [
         "64",
-        4090
+        2738
       ],
       [
         "128",
-        6262
+        4353
       ],
       [
         "256",
-        11070
+        8037
       ]
     ]
+  },
+  "memory": {
+    "total": {
+      "heap_allocations": 20,
+      "heap_bytes_allocated": 5093,
+      "heap_deallocations": 19,
+      "stack_estimate_bytes": 0,
+      "static_memory_bytes": 0
+    },
+    "per_cipher": [
+      {
+        "name": "PRESENT-80",
+        "heap_allocs": 0,
+        "heap_bytes": 0,
+        "stack_bytes": 264
+      },
+      {
+        "name": "PRESENT-128",
+        "heap_allocs": 0,
+        "heap_bytes": 0,
+        "stack_bytes": 264
+      },
+      {
+        "name": "SPECK64/96",
+        "heap_allocs": 0,
+        "heap_bytes": 0,
+        "stack_bytes": 160
+      },
+      {
+        "name": "SPECK64/128",
+        "heap_allocs": 0,
+        "heap_bytes": 0,
+        "stack_bytes": 160
+      },
+      {
+        "name": "ASCON-128",
+        "heap_allocs": 0,
+        "heap_bytes": 0,
+        "stack_bytes": 128
+      }
+    ],
+    "section_sizes": {
+      "text": 0,
+      "data": 0,
+      "bss": 0,
+      "total": 0
+    }
   }
 }

@@ -276,6 +276,110 @@ def plot_scaling_analysis(data):
     print(f"Generated: {OUTPUT_DIR / 'scaling_analysis.svg'}")
 
 
+def plot_memory_per_cipher(data):
+    """Generate memory usage per cipher bar chart."""
+    fig, ax = plt.subplots(figsize=(12, 6))
+    memory = data.get("memory", {})
+    per_cipher = memory.get("per_cipher", [])
+    if not per_cipher:
+        print("No per-cipher memory data found")
+        return
+    names = [p["name"] for p in per_cipher]
+    stack_bytes = [p["stack_bytes"] for p in per_cipher]
+    heap_bytes = [p["heap_bytes"] for p in per_cipher]
+    x = range(len(names))
+    width = 0.35
+    bars1 = ax.bar(
+        [i - width / 2 for i in x],
+        stack_bytes,
+        width,
+        label="Stack (bytes)",
+        color="#264653",
+        edgecolor="black",
+        linewidth=1.2,
+    )
+    bars2 = ax.bar(
+        [i + width / 2 for i in x],
+        heap_bytes,
+        width,
+        label="Heap (bytes)",
+        color="#E63946",
+        edgecolor="black",
+        linewidth=1.2,
+    )
+    ax.set_xlabel("Cipher", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Memory (bytes)", fontsize=12, fontweight="bold")
+    ax.set_title("Stack & Heap Memory Usage per Cipher", fontsize=14, fontweight="bold")
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, fontsize=10)
+    ax.legend(loc="upper right", fontsize=10)
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+    for bar in bars1:
+        if bar.get_height() > 0:
+            ax.annotate(
+                f"{bar.get_height():.0f}",
+                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+    for bar in bars2:
+        if bar.get_height() > 0:
+            ax.annotate(
+                f"{bar.get_height():.0f}",
+                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+    plt.tight_layout()
+    fig.savefig(OUTPUT_DIR / "memory_per_cipher.svg", format="svg", bbox_inches="tight")
+    plt.close()
+    print(f"Generated: {OUTPUT_DIR / 'memory_per_cipher.svg'}")
+
+
+def plot_binary_sections(data):
+    """Generate binary section sizes bar chart."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    memory = data.get("memory", {})
+    sections = memory.get("section_sizes", {})
+    if not sections or sections.get("total", 0) == 0:
+        print("No section size data (binary not built for analysis)")
+        return
+    section_names = [".text", ".data", ".bss"]
+    section_values = [
+        sections.get("text", 0),
+        sections.get("data", 0),
+        sections.get("bss", 0),
+    ]
+    colors = ["#2A9D8F", "#F4A261", "#E63946"]
+    bars = ax.bar(
+        section_names, section_values, color=colors, edgecolor="black", linewidth=1.2
+    )
+    ax.set_xlabel("Section", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Size (bytes)", fontsize=12, fontweight="bold")
+    ax.set_title("Binary Section Sizes", fontsize=14, fontweight="bold")
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+    total = sum(section_values)
+    for bar, val in zip(bars, section_values):
+        if val > 0:
+            percentage = (val / total) * 100
+            ax.annotate(
+                f"{val:,} ({percentage:.1f}%)",
+                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                ha="center",
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+            )
+    plt.tight_layout()
+    fig.savefig(OUTPUT_DIR / "binary_sections.svg", format="svg", bbox_inches="tight")
+    plt.close()
+    print(f"Generated: {OUTPUT_DIR / 'binary_sections.svg'}")
+
+
 def main():
     ensure_output_dir()
 
@@ -292,6 +396,8 @@ def main():
     plot_mode_comparison(data)
     plot_ascon_breakdown(data)
     plot_scaling_analysis(data)
+    plot_memory_per_cipher(data)
+    plot_binary_sections(data)
 
     print(f"\nAll graphs saved to {OUTPUT_DIR}/")
     print("Generated files:")
