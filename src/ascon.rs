@@ -305,11 +305,7 @@ pub fn decrypt_aead(
         diff |= a ^ b;
     }
 
-    if diff == 0 {
-        Some(plaintext)
-    } else {
-        None
-    }
+    if diff == 0 { Some(plaintext) } else { None }
 }
 
 pub fn encrypt_aead_varlen(
@@ -358,15 +354,11 @@ pub fn decrypt_aead_varlen(
         diff |= a ^ b;
     }
 
-    if diff == 0 {
-        Some(ct_len)
-    } else {
-        None
-    }
+    if diff == 0 { Some(ct_len) } else { None }
 }
 
 pub mod test_vectors {
-    use super::{decrypt_aead, AsconAead, AsconHash};
+    use super::{AsconAead, AsconHash, decrypt_aead};
 
     #[must_use]
     pub fn run_tests() -> bool {

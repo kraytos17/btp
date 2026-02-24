@@ -5,11 +5,11 @@
 use core::fmt::Write;
 use core::ptr::addr_of;
 use panic_halt as _;
-use rp2040_hal::fugit::RateExtU32;
-use rp2040_hal::Clock;
 use rp_pico::entry;
 use rp_pico::hal::uart::{DataBits, StopBits, UartConfig};
-use rp_pico::hal::{self, pac, Timer};
+use rp_pico::hal::{self, Timer, pac};
+use rp2040_hal::Clock;
+use rp2040_hal::fugit::RateExtU32;
 
 mod ascon;
 mod benchmark;

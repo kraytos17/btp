@@ -229,8 +229,8 @@ fn bench_ascon_detailed(timer: Timer) {
 }
 
 pub mod modes {
-    use crate::present::{modes as present_modes, Present};
-    use crate::speck::{modes as speck_modes, Speck64};
+    use crate::present::{Present, modes as present_modes};
+    use crate::speck::{Speck64, modes as speck_modes};
     use rp2040_hal::Timer;
 
     pub static mut PRESENT_ECB_RESULT: u64 = 0;
