@@ -10,9 +10,50 @@ pub mod benchmark;
 #[cfg(feature = "std")]
 pub mod host_tests {
     use crate::ascon::{AsconAead, AsconHash};
-    use crate::present::{modes as present_modes, Present};
-    use crate::speck::{modes as speck_modes, Speck64};
+    use crate::present::{Present, modes as present_modes};
+    use crate::speck::{Speck64, modes as speck_modes};
     use serde::Serialize;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static HEAP_ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static HEAP_ALLOC_BYTES: AtomicUsize = AtomicUsize::new(0);
+    static HEAP_DEALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct TrackingAllocator;
+
+    unsafe impl GlobalAlloc for TrackingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            HEAP_ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            HEAP_ALLOC_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+            HEAP_DEALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            unsafe { System.dealloc(_ptr, _layout) }
+        }
+    }
+
+    #[global_allocator]
+    static A: TrackingAllocator = TrackingAllocator;
+
+    #[derive(Serialize, Clone)]
+    pub struct MemoryMetrics {
+        pub heap_allocations: usize,
+        pub heap_bytes_allocated: usize,
+        pub heap_deallocations: usize,
+        pub stack_estimate_bytes: usize,
+        pub static_memory_bytes: usize,
+    }
+
+    #[derive(Serialize, Clone)]
+    pub struct CipherMemory {
+        pub name: String,
+        pub heap_allocs: usize,
+        pub heap_bytes: usize,
+        pub stack_bytes: usize,
+    }
 
     #[derive(Serialize)]
     pub struct BenchmarkResults {
@@ -20,6 +61,22 @@ pub mod host_tests {
         pub modes: ModeResults,
         pub ascon_phases: AsconPhaseResults,
         pub scaling: ScalingResults,
+        pub memory: MemoryResults,
+    }
+
+    #[derive(Serialize)]
+    pub struct MemoryResults {
+        pub total: MemoryMetrics,
+        pub per_cipher: Vec<CipherMemory>,
+        pub section_sizes: SectionSizes,
+    }
+
+    #[derive(Serialize, Clone)]
+    pub struct SectionSizes {
+        pub text: usize,
+        pub data: usize,
+        pub bss: usize,
+        pub total: usize,
     }
 
     #[derive(Serialize)]
@@ -61,6 +118,54 @@ pub mod host_tests {
         pub present_128: Vec<(String, u64)>,
         pub speck64_128: Vec<(String, u64)>,
         pub ascon_128: Vec<(String, u64)>,
+    }
+
+    fn reset_memory_stats() {
+        HEAP_ALLOC_COUNT.store(0, Ordering::Relaxed);
+        HEAP_ALLOC_BYTES.store(0, Ordering::Relaxed);
+        HEAP_DEALLOC_COUNT.store(0, Ordering::Relaxed);
+    }
+
+    fn get_memory_stats() -> (usize, usize, usize) {
+        (
+            HEAP_ALLOC_COUNT.load(Ordering::Relaxed),
+            HEAP_ALLOC_BYTES.load(Ordering::Relaxed),
+            HEAP_DEALLOC_COUNT.load(Ordering::Relaxed),
+        )
+    }
+
+    fn get_section_sizes() -> SectionSizes {
+        use std::process::Command;
+
+        let output = Command::new("size")
+            .arg("--format=sysv")
+            .arg("--")
+            .arg(std::env::current_exe().unwrap_or_default())
+            .output();
+
+        if let Ok(output) = output {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                if line.contains("btp") || line.contains("host") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 5 {
+                        return SectionSizes {
+                            text: parts[1].parse().unwrap_or(0),
+                            data: parts[2].parse().unwrap_or(0),
+                            bss: parts[3].parse().unwrap_or(0),
+                            total: parts[4].parse().unwrap_or(0),
+                        };
+                    }
+                }
+            }
+        }
+
+        SectionSizes {
+            text: 0,
+            data: 0,
+            bss: 0,
+            total: 0,
+        }
     }
 
     fn ns_to_mbps(ns: u64, block_size: usize) -> f64 {
@@ -468,12 +573,117 @@ pub mod host_tests {
                 speck64_128: scaling_speck64_128,
                 ascon_128: scaling_ascon_128,
             },
+            memory: run_memory_benchmark(),
         };
 
         let json = serde_json::to_string_pretty(&results).unwrap();
         println!("{}", json);
 
         results
+    }
+
+    pub fn run_memory_benchmark() -> MemoryResults {
+        reset_memory_stats();
+
+        let mut per_cipher = Vec::new();
+
+        {
+            reset_memory_stats();
+            let cipher = Present::new(&[0u8; 10]).unwrap();
+            let pt = [0u8; 8];
+            for _ in 0..1000 {
+                let _ = cipher.encrypt_block(pt);
+            }
+            let (allocs, bytes, _) = get_memory_stats();
+            per_cipher.push(CipherMemory {
+                name: "PRESENT-80".to_string(),
+                heap_allocs: allocs,
+                heap_bytes: bytes,
+                stack_bytes: std::mem::size_of::<Present>() + std::mem::size_of::<[u8; 8]>(),
+            });
+        }
+
+        {
+            reset_memory_stats();
+            let cipher = Present::new(&[0u8; 16]).unwrap();
+            let pt = [0u8; 8];
+            for _ in 0..1000 {
+                let _ = cipher.encrypt_block(pt);
+            }
+            let (allocs, bytes, _) = get_memory_stats();
+            per_cipher.push(CipherMemory {
+                name: "PRESENT-128".to_string(),
+                heap_allocs: allocs,
+                heap_bytes: bytes,
+                stack_bytes: std::mem::size_of::<Present>() + std::mem::size_of::<[u8; 8]>(),
+            });
+        }
+
+        {
+            reset_memory_stats();
+            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+            let pt = [0u32; 2];
+            for _ in 0..1000 {
+                let _ = cipher.encrypt_block(pt);
+            }
+            let (allocs, bytes, _) = get_memory_stats();
+            per_cipher.push(CipherMemory {
+                name: "SPECK64/96".to_string(),
+                heap_allocs: allocs,
+                heap_bytes: bytes,
+                stack_bytes: std::mem::size_of::<Speck64>() + std::mem::size_of::<[u32; 2]>(),
+            });
+        }
+
+        {
+            reset_memory_stats();
+            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+            let pt = [0u32; 2];
+            for _ in 0..1000 {
+                let _ = cipher.encrypt_block(pt);
+            }
+            let (allocs, bytes, _) = get_memory_stats();
+            per_cipher.push(CipherMemory {
+                name: "SPECK64/128".to_string(),
+                heap_allocs: allocs,
+                heap_bytes: bytes,
+                stack_bytes: std::mem::size_of::<Speck64>() + std::mem::size_of::<[u32; 2]>(),
+            });
+        }
+
+        {
+            reset_memory_stats();
+            let key = [0u8; 16];
+            let nonce = [0u8; 16];
+            let pt = [0u8; 16];
+            let ad = [0u8; 8];
+            for _ in 0..1000 {
+                let _ = crate::ascon::encrypt_aead(&key, &nonce, &pt, &ad);
+            }
+            let (allocs, bytes, _) = get_memory_stats();
+            per_cipher.push(CipherMemory {
+                name: "ASCON-128".to_string(),
+                heap_allocs: allocs,
+                heap_bytes: bytes,
+                stack_bytes: std::mem::size_of::<AsconAead>() * 2 + 32,
+            });
+        }
+
+        let section_sizes = get_section_sizes();
+
+        let (total_allocs, total_bytes, total_deallocs) = get_memory_stats();
+
+        MemoryResults {
+            total: MemoryMetrics {
+                heap_allocations: total_allocs,
+                heap_bytes_allocated: total_bytes,
+                heap_deallocations: total_deallocs,
+                stack_estimate_bytes: 0,
+                static_memory_bytes: section_sizes.data + section_sizes.bss,
+            },
+            per_cipher,
+            section_sizes,
+        }
     }
 }
 

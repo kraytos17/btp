@@ -9,9 +9,17 @@ test = true
 
 [[bin]]
 name = "btp"
+path = "src/main.rs"
 test = false
 bench = false
 required-features = ["embedded"]
+
+[[bin]]
+name = "btp-host"
+path = "src/main_host.rs"
+test = false
+bench = false
+required-features = ["std"]
 
 [features]
 default = ["embedded"]
