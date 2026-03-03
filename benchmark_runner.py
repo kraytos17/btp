@@ -8,7 +8,6 @@ import subprocess
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 
 OUTPUT_DIR = Path("graphs")
 RESULTS_FILE = Path("benchmark_results.json")
