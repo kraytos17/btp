@@ -8,5 +8,5 @@ use btp::benchmark_host;
 
 fn main() {
     println!("=== Host Benchmark ===\n");
-    benchmark_host();
+    let _ = benchmark_host();
 }

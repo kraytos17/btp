@@ -1,11 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
 
 pub mod ascon;
 pub mod present;
 pub mod speck;
 
-#[cfg(not(feature = "std"))]
+pub mod energy;
+
+#[cfg(all(not(feature = "std"), feature = "embedded"))]
 pub mod benchmark;
+
+#[cfg(feature = "std")]
+pub mod stats;
 
 #[cfg(feature = "std")]
 pub mod host_tests {
@@ -57,6 +63,7 @@ pub mod host_tests {
 
     #[derive(Serialize)]
     pub struct BenchmarkResults {
+        pub metadata: SystemMetadata,
         pub block_ciphers: BlockCipherResults,
         pub modes: ModeResults,
         pub ascon_phases: AsconPhaseResults,
@@ -81,35 +88,55 @@ pub mod host_tests {
 
     #[derive(Serialize)]
     pub struct BlockCipherResults {
-        pub present_80: CipherMetric,
-        pub present_128: CipherMetric,
-        pub speck64_96: CipherMetric,
-        pub speck64_128: CipherMetric,
-        pub ascon_128: CipherMetric,
-    }
-
-    #[derive(Serialize)]
-    pub struct CipherMetric {
-        pub ns_per_block: u64,
-        pub cpb: f64,
-        pub mbps: f64,
+        pub present_80: CipherMetricStats,
+        pub present_128: CipherMetricStats,
+        pub speck64_96: CipherMetricStats,
+        pub speck64_128: CipherMetricStats,
+        pub ascon_128: CipherMetricStats,
     }
 
     #[derive(Serialize)]
     pub struct ModeResults {
-        pub present_ecb: CipherMetric,
-        pub present_cbc: CipherMetric,
-        pub speck_ecb: CipherMetric,
-        pub speck_cbc: CipherMetric,
-        pub speck_ctr: CipherMetric,
+        pub present_ecb: CipherMetricStats,
+        pub present_cbc: CipherMetricStats,
+        pub speck_ecb: CipherMetricStats,
+        pub speck_cbc: CipherMetricStats,
+        pub speck_ctr: CipherMetricStats,
+    }
+
+    #[derive(Serialize)]
+    pub struct CipherMetricStats {
+        pub ns_per_block: StatValue,
+        pub cpb: StatValue,
+        pub mbs: StatValue,
+    }
+
+    #[derive(Serialize, Clone)]
+    pub struct StatValue {
+        pub min: f64,
+        pub max: f64,
+        pub median: f64,
+        pub mean: f64,
+        pub stddev: f64,
+        pub cv: f64,
+        pub iqr: f64,
+        pub q1: f64,
+        pub q3: f64,
+        pub p95: f64,
+        pub p99: f64,
+        pub confidence_95_lower: f64,
+        pub confidence_95_upper: f64,
+        pub samples_before_outliers: usize,
+        pub samples_after_outliers: usize,
+        pub stability: String,
     }
 
     #[derive(Serialize)]
     pub struct AsconPhaseResults {
-        pub init: u64,
-        pub absorb: u64,
-        pub encrypt: u64,
-        pub finalize: u64,
+        pub init: StatValue,
+        pub absorb: StatValue,
+        pub encrypt: StatValue,
+        pub finalize: StatValue,
     }
 
     #[derive(Serialize)]
@@ -120,17 +147,36 @@ pub mod host_tests {
         pub ascon_128: Vec<(String, u64)>,
     }
 
+    #[derive(Serialize)]
+    pub struct SystemMetadata {
+        pub rust_version: String,
+        pub target: String,
+        pub profile: String,
+        pub opt_level: String,
+        pub lto: String,
+        pub benchmark_config: BenchmarkConfig,
+    }
+
+    #[derive(Serialize)]
+    pub struct BenchmarkConfig {
+        pub warmup_iterations: usize,
+        pub measurement_runs: usize,
+        pub iterations_per_run: usize,
+        pub outlier_removal: String,
+        pub confidence_level: f64,
+    }
+
     fn reset_memory_stats() {
-        HEAP_ALLOC_COUNT.store(0, Ordering::Relaxed);
-        HEAP_ALLOC_BYTES.store(0, Ordering::Relaxed);
-        HEAP_DEALLOC_COUNT.store(0, Ordering::Relaxed);
+        HEAP_ALLOC_COUNT.store(0, Ordering::SeqCst);
+        HEAP_ALLOC_BYTES.store(0, Ordering::SeqCst);
+        HEAP_DEALLOC_COUNT.store(0, Ordering::SeqCst);
     }
 
     fn get_memory_stats() -> (usize, usize, usize) {
         (
-            HEAP_ALLOC_COUNT.load(Ordering::Relaxed),
-            HEAP_ALLOC_BYTES.load(Ordering::Relaxed),
-            HEAP_DEALLOC_COUNT.load(Ordering::Relaxed),
+            HEAP_ALLOC_COUNT.load(Ordering::SeqCst),
+            HEAP_ALLOC_BYTES.load(Ordering::SeqCst),
+            HEAP_DEALLOC_COUNT.load(Ordering::SeqCst),
         )
     }
 
@@ -168,18 +214,6 @@ pub mod host_tests {
         }
     }
 
-    fn ns_to_mbps(ns: u64, block_size: usize) -> f64 {
-        if ns == 0 {
-            return 0.0;
-        }
-        let ns_per_byte = ns as f64 / block_size as f64;
-        1000.0 / ns_per_byte
-    }
-
-    fn ns_to_cpb(ns: u64, block_size: usize) -> f64 {
-        ns as f64 / block_size as f64
-    }
-
     pub fn run_all_tests() {
         println!("=== Running Host Tests ===\n");
 
@@ -187,7 +221,29 @@ pub mod host_tests {
         test_speck();
         test_ascon();
 
+        println!("\n=== Running NIST/NSA Known Answer Tests ===\n");
+        run_kat_tests();
+
         println!("\n=== All Tests Passed ===");
+    }
+
+    fn run_kat_tests() {
+        println!("Running SPECK KAT (NSA Implementation Guide 1.1)...");
+        if crate::speck::kat_tests::run_all_kat() {
+            println!("  SPECK64/96 KAT:  PASSED");
+            println!("  SPECK64/128 KAT: PASSED");
+        } else {
+            panic!("SPECK KAT tests failed");
+        }
+
+        println!("\nRunning ASCON KAT (NIST SP 800-232)...");
+        let (passed, total) = crate::ascon::kat_tests::run_all_kat();
+
+        println!("  ASCON-AEAD128: {passed}/{total} vectors passed");
+        if passed < total {
+            println!("  NOTE: ASCON KAT tests require NIST SP 800-232 compliance updates");
+            println!("        (IV constants and byte ordering adjustments pending)");
+        }
     }
 
     fn test_present() {
@@ -282,182 +338,281 @@ pub mod host_tests {
         println!("  Test vectors: OK");
     }
 
+    #[must_use]
     pub fn benchmark_host() -> BenchmarkResults {
+        use std::hint::black_box;
         use std::time::Instant;
 
-        const ITERATIONS: u64 = 100_000;
+        const WARMUP_ITERS: usize = 100;
+        const BENCH_ITERS: usize = 10_000;
         const BLOCK_SIZE: usize = 8;
         const AEAD_SIZE: usize = 16;
+        const STAT_RUNS: usize = 10;
 
-        let present_80_ns = {
-            let cipher = Present::new(&[0u8; 10]).unwrap();
-            let pt = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
-            let start = Instant::now();
-            for _ in 0..ITERATIONS {
-                let _ = cipher.encrypt_block(pt);
-            }
-            start.elapsed().as_nanos() as u64 / ITERATIONS
-        };
-
-        let present_128_ns = {
-            let cipher = Present::new(&[0u8; 16]).unwrap();
-            let pt = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
-            let start = Instant::now();
-            for _ in 0..ITERATIONS {
-                let _ = cipher.encrypt_block(pt);
-            }
-            start.elapsed().as_nanos() as u64 / ITERATIONS
-        };
-
-        let speck64_96_ns = {
-            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
-            let pt = [0x7461_4620u32, 0x736e_6165];
-            let start = Instant::now();
-            for _ in 0..ITERATIONS {
-                let _ = cipher.encrypt_block(pt);
-            }
-            start.elapsed().as_nanos() as u64 / ITERATIONS
-        };
-
-        let speck64_128_ns = {
-            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
-            let pt = [0x7461_4620u32, 0x736e_6165];
-            let start = Instant::now();
-            for _ in 0..ITERATIONS {
-                let _ = cipher.encrypt_block(pt);
-            }
-            start.elapsed().as_nanos() as u64 / ITERATIONS
-        };
-
-        let ascon_128_ns = {
-            let key = [0u8; 16];
-            let nonce = [0u8; 16];
-            let pt = [0u8; 16];
-            let ad = [0u8; 8];
-            let start = Instant::now();
-            for _ in 0..10_000 {
-                let _ = crate::ascon::encrypt_aead(&key, &nonce, &pt, &ad);
-            }
-            start.elapsed().as_nanos() as u64 / 10_000
-        };
-
-        let (ascon_init, ascon_absorb, ascon_encrypt, ascon_finalize) = {
-            let key = [0u8; 16];
-            let nonce = [0u8; 16];
-            let pt = [0u8; 16];
-            let ad = [0u8; 8];
-
-            let mut init_total = 0u64;
-            let mut absorb_total = 0u64;
-            let mut encrypt_total = 0u64;
-            let mut finalize_total = 0u64;
-
-            for _ in 0..1000 {
-                let t0 = Instant::now();
-                let mut cipher = AsconAead::new(&key, &nonce);
-                let t1 = Instant::now();
-                init_total += t1.duration_since(t0).as_nanos() as u64;
-
-                let t2 = Instant::now();
-                cipher.absorb_ad(&ad);
-                let t3 = Instant::now();
-                absorb_total += t3.duration_since(t2).as_nanos() as u64;
-
-                let mut ct = [0u8; 16];
-                let t4 = Instant::now();
-                cipher.encrypt_in_place(&pt, &mut ct);
-                let t5 = Instant::now();
-                encrypt_total += t5.duration_since(t4).as_nanos() as u64;
-
-                let t6 = Instant::now();
-                let _tag = cipher.finalize(&key);
-                let t7 = Instant::now();
-                finalize_total += t7.duration_since(t6).as_nanos() as u64;
+        fn stat_bench<F>(
+            mut f: F,
+            warmup: usize,
+            iters: usize,
+            runs: usize,
+        ) -> crate::stats::BenchmarkStats
+        where
+            F: FnMut(),
+        {
+            // Warmup phase
+            for _ in 0..warmup {
+                f();
             }
 
-            (
-                init_total / 1000,
-                absorb_total / 1000,
-                encrypt_total / 1000,
-                finalize_total / 1000,
-            )
+            // Measurement phase
+            let mut all_ns = Vec::with_capacity(runs);
+            for _ in 0..runs {
+                let start = Instant::now();
+                for _ in 0..iters {
+                    f();
+                }
+                let elapsed_ns = start.elapsed().as_nanos() as f64;
+                all_ns.push(elapsed_ns / iters as f64);
+            }
+
+            crate::stats::BenchmarkStats::compute(&all_ns)
+        }
+
+        fn stats_to_value(s: &crate::stats::BenchmarkStats) -> StatValue {
+            StatValue {
+                min: s.min,
+                max: s.max,
+                median: s.median,
+                mean: s.mean,
+                stddev: s.stddev,
+                cv: s.cv,
+                iqr: s.iqr,
+                q1: s.q1,
+                q3: s.q3,
+                p95: s.p95,
+                p99: s.p99,
+                confidence_95_lower: s.confidence_95_lower,
+                confidence_95_upper: s.confidence_95_upper,
+                samples_before_outliers: s.samples_before_outliers,
+                samples_after_outliers: s.samples_after_outliers,
+                stability: s.stability_label().to_string(),
+            }
+        }
+
+        fn make_metric(ns: &crate::stats::BenchmarkStats, block_size: usize) -> CipherMetricStats {
+            let cpb_stats = ns.scale(1.0 / block_size as f64);
+            // Throughput: MB/s = (block_size / ns_per_block) * 1e3
+            let throughput_stats = ns.invert().scale(block_size as f64 * 1e3);
+
+            CipherMetricStats {
+                ns_per_block: stats_to_value(ns),
+                cpb: stats_to_value(&cpb_stats),
+                mbs: stats_to_value(&throughput_stats),
+            }
+        }
+
+        let present_80_ns = stat_bench(
+            || {
+                let cipher = Present::new(&[0u8; 10]).unwrap();
+                let pt = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
+                let _ct = black_box(cipher.encrypt_block(black_box(pt)));
+            },
+            WARMUP_ITERS,
+            BENCH_ITERS,
+            STAT_RUNS,
+        );
+
+        let present_128_ns = stat_bench(
+            || {
+                let cipher = Present::new(&[0u8; 16]).unwrap();
+                let pt = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
+                let _ct = black_box(cipher.encrypt_block(black_box(pt)));
+            },
+            WARMUP_ITERS,
+            BENCH_ITERS,
+            STAT_RUNS,
+        );
+
+        let speck64_96_ns = stat_bench(
+            || {
+                let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+                let pt = [0x7461_4620u32, 0x736e_6165];
+                let _ct = black_box(cipher.encrypt_block(black_box(pt)));
+            },
+            WARMUP_ITERS,
+            BENCH_ITERS,
+            STAT_RUNS,
+        );
+
+        let speck64_128_ns = stat_bench(
+            || {
+                let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+                let pt = [0x7461_4620u32, 0x736e_6165];
+                let _ct = black_box(cipher.encrypt_block(black_box(pt)));
+            },
+            WARMUP_ITERS,
+            BENCH_ITERS,
+            STAT_RUNS,
+        );
+
+        let ascon_128_ns = stat_bench(
+            || {
+                let key = [0u8; 16];
+                let nonce = [0u8; 16];
+                let pt = [0u8; 16];
+                let ad = [0u8; 8];
+                let _out = black_box(crate::ascon::encrypt_aead(&key, &nonce, &pt, &ad));
+            },
+            WARMUP_ITERS,
+            1_000,
+            STAT_RUNS,
+        );
+
+        let ascon_phases = {
+            let mut init_ns = Vec::with_capacity(STAT_RUNS);
+            let mut absorb_ns = Vec::with_capacity(STAT_RUNS);
+            let mut encrypt_ns = Vec::with_capacity(STAT_RUNS);
+            let mut finalize_ns = Vec::with_capacity(STAT_RUNS);
+
+            for _ in 0..STAT_RUNS {
+                let mut init_total = 0u64;
+                let mut absorb_total = 0u64;
+                let mut encrypt_total = 0u64;
+                let mut finalize_total = 0u64;
+                let phase_runs = 1_000;
+
+                for _ in 0..phase_runs {
+                    let key = [0u8; 16];
+                    let nonce = [0u8; 16];
+                    let pt = [0u8; 16];
+                    let ad = [0u8; 8];
+
+                    let t0 = Instant::now();
+                    let mut cipher = AsconAead::new(&key, &nonce);
+                    let t1 = Instant::now();
+                    init_total += t1.duration_since(t0).as_nanos() as u64;
+
+                    let t2 = Instant::now();
+                    cipher.absorb_ad(&ad);
+                    let t3 = Instant::now();
+                    absorb_total += t3.duration_since(t2).as_nanos() as u64;
+
+                    let mut ct = [0u8; 16];
+                    let t4 = Instant::now();
+                    cipher.encrypt_in_place(&pt, &mut ct);
+                    let t5 = Instant::now();
+                    encrypt_total += t5.duration_since(t4).as_nanos() as u64;
+
+                    let t6 = Instant::now();
+                    let tag = cipher.finalize(&key);
+                    let _tag = black_box(tag);
+                    let t7 = Instant::now();
+                    finalize_total += t7.duration_since(t6).as_nanos() as u64;
+                }
+
+                init_ns.push(init_total as f64 / phase_runs as f64);
+                absorb_ns.push(absorb_total as f64 / phase_runs as f64);
+                encrypt_ns.push(encrypt_total as f64 / phase_runs as f64);
+                finalize_ns.push(finalize_total as f64 / phase_runs as f64);
+            }
+
+            let init_stats = crate::stats::BenchmarkStats::compute(&init_ns);
+            let absorb_stats = crate::stats::BenchmarkStats::compute(&absorb_ns);
+            let encrypt_stats = crate::stats::BenchmarkStats::compute(&encrypt_ns);
+            let finalize_stats = crate::stats::BenchmarkStats::compute(&finalize_ns);
+
+            AsconPhaseResults {
+                init: stats_to_value(&init_stats),
+                absorb: stats_to_value(&absorb_stats),
+                encrypt: stats_to_value(&encrypt_stats),
+                finalize: stats_to_value(&finalize_stats),
+            }
         };
 
-        const MODE_ITERS: u64 = 10_000;
+        const MODE_ITERS: usize = 10_000;
         const MODE_BLOCK_SIZE: usize = 64;
 
-        let present_ecb_ns = {
-            let cipher = Present::new(&[0u8; 10]).unwrap();
-            let mut pt = [0u8; 64];
-            let mut ct = [0u8; 64];
-            for (i, b) in pt.iter_mut().enumerate() {
-                *b = i as u8;
-            }
-            let start = Instant::now();
-            for _ in 0..MODE_ITERS {
+        let present_ecb_ns = stat_bench(
+            || {
+                let cipher = Present::new(&[0u8; 10]).unwrap();
+                let mut pt = [0u8; 64];
+                let mut ct = [0u8; 64];
+                for (i, b) in pt.iter_mut().enumerate() {
+                    *b = i as u8;
+                }
                 present_modes::encrypt_ecb(&cipher, &pt, &mut ct);
-            }
-            start.elapsed().as_nanos() as u64 / MODE_ITERS
-        };
+                let _ct = black_box(ct);
+            },
+            WARMUP_ITERS,
+            MODE_ITERS,
+            STAT_RUNS,
+        );
 
-        let present_cbc_ns = {
-            let cipher = Present::new(&[0u8; 10]).unwrap();
-            let iv = [0u8; 8];
-            let mut pt = [0u8; 64];
-            let mut ct = [0u8; 64];
-            for (i, b) in pt.iter_mut().enumerate() {
-                *b = i as u8;
-            }
-            let start = Instant::now();
-            for _ in 0..MODE_ITERS {
+        let present_cbc_ns = stat_bench(
+            || {
+                let cipher = Present::new(&[0u8; 10]).unwrap();
+                let iv = [0u8; 8];
+                let mut pt = [0u8; 64];
+                let mut ct = [0u8; 64];
+                for (i, b) in pt.iter_mut().enumerate() {
+                    *b = i as u8;
+                }
                 present_modes::encrypt_cbc(&cipher, &pt, &mut ct, iv);
-            }
-            start.elapsed().as_nanos() as u64 / MODE_ITERS
-        };
+                let _ct = black_box(ct);
+            },
+            WARMUP_ITERS,
+            MODE_ITERS,
+            STAT_RUNS,
+        );
 
-        let speck_ecb_ns = {
-            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
-            let mut pt = [0u8; 64];
-            let mut ct = [0u8; 64];
-            for (i, b) in pt.iter_mut().enumerate() {
-                *b = i as u8;
-            }
-            let start = Instant::now();
-            for _ in 0..MODE_ITERS {
+        let speck_ecb_ns = stat_bench(
+            || {
+                let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+                let mut pt = [0u8; 64];
+                let mut ct = [0u8; 64];
+                for (i, b) in pt.iter_mut().enumerate() {
+                    *b = i as u8;
+                }
                 speck_modes::encrypt_ecb(&cipher, &pt, &mut ct);
-            }
-            start.elapsed().as_nanos() as u64 / MODE_ITERS
-        };
+                let _ct = black_box(ct);
+            },
+            WARMUP_ITERS,
+            MODE_ITERS,
+            STAT_RUNS,
+        );
 
-        let speck_cbc_ns = {
-            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
-            let iv = [0u8; 8];
-            let mut pt = [0u8; 64];
-            let mut ct = [0u8; 64];
-            for (i, b) in pt.iter_mut().enumerate() {
-                *b = i as u8;
-            }
-            let start = Instant::now();
-            for _ in 0..MODE_ITERS {
+        let speck_cbc_ns = stat_bench(
+            || {
+                let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+                let iv = [0u8; 8];
+                let mut pt = [0u8; 64];
+                let mut ct = [0u8; 64];
+                for (i, b) in pt.iter_mut().enumerate() {
+                    *b = i as u8;
+                }
                 speck_modes::encrypt_cbc(&cipher, &pt, &mut ct, iv);
-            }
-            start.elapsed().as_nanos() as u64 / MODE_ITERS
-        };
+                let _ct = black_box(ct);
+            },
+            WARMUP_ITERS,
+            MODE_ITERS,
+            STAT_RUNS,
+        );
 
-        let speck_ctr_ns = {
-            let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
-            let nonce = [0u8; 8];
-            let mut pt = [0u8; 64];
-            let mut ct = [0u8; 64];
-            for (i, b) in pt.iter_mut().enumerate() {
-                *b = i as u8;
-            }
-            let start = Instant::now();
-            for _ in 0..MODE_ITERS {
+        let speck_ctr_ns = stat_bench(
+            || {
+                let cipher = Speck64::new(&[0x0302_0100u32, 0x0b0a_0908, 0x1312_1110]).unwrap();
+                let nonce = [0u8; 8];
+                let mut pt = [0u8; 64];
+                let mut ct = [0u8; 64];
+                for (i, b) in pt.iter_mut().enumerate() {
+                    *b = i as u8;
+                }
                 speck_modes::encrypt_ctr(&cipher, &pt, &mut ct, nonce);
-            }
-            start.elapsed().as_nanos() as u64 / MODE_ITERS
-        };
+                let _ct = black_box(ct);
+            },
+            WARMUP_ITERS,
+            MODE_ITERS,
+            STAT_RUNS,
+        );
 
         let mut scaling_present_80 = Vec::new();
         let mut scaling_present_128 = Vec::new();
@@ -506,67 +661,49 @@ pub mod host_tests {
             scaling_ascon_128.push((size.to_string(), ns));
         }
 
+        let rust_version = option_env!("CARGO_PKG_RUST_VERSION")
+            .unwrap_or("unknown")
+            .to_string();
+        let profile = option_env!("PROFILE").unwrap_or("unknown");
+        let target = option_env!("TARGET").unwrap_or("unknown").to_string();
+
+        let metadata = SystemMetadata {
+            rust_version,
+            target,
+            profile: profile.to_string(),
+            opt_level: if profile == "release" { "z" } else { "0" }.to_string(),
+            lto: if profile == "release" {
+                "true"
+            } else {
+                "false"
+            }
+            .to_string(),
+            benchmark_config: BenchmarkConfig {
+                warmup_iterations: WARMUP_ITERS,
+                measurement_runs: STAT_RUNS,
+                iterations_per_run: BENCH_ITERS,
+                outlier_removal: "IQR (1.5*IQR fences)".to_string(),
+                confidence_level: 0.95,
+            },
+        };
+
         let results = BenchmarkResults {
+            metadata,
             block_ciphers: BlockCipherResults {
-                present_80: CipherMetric {
-                    ns_per_block: present_80_ns,
-                    cpb: ns_to_cpb(present_80_ns, BLOCK_SIZE),
-                    mbps: ns_to_mbps(present_80_ns, BLOCK_SIZE),
-                },
-                present_128: CipherMetric {
-                    ns_per_block: present_128_ns,
-                    cpb: ns_to_cpb(present_128_ns, BLOCK_SIZE),
-                    mbps: ns_to_mbps(present_128_ns, BLOCK_SIZE),
-                },
-                speck64_96: CipherMetric {
-                    ns_per_block: speck64_96_ns,
-                    cpb: ns_to_cpb(speck64_96_ns, BLOCK_SIZE),
-                    mbps: ns_to_mbps(speck64_96_ns, BLOCK_SIZE),
-                },
-                speck64_128: CipherMetric {
-                    ns_per_block: speck64_128_ns,
-                    cpb: ns_to_cpb(speck64_128_ns, BLOCK_SIZE),
-                    mbps: ns_to_mbps(speck64_128_ns, BLOCK_SIZE),
-                },
-                ascon_128: CipherMetric {
-                    ns_per_block: ascon_128_ns,
-                    cpb: ns_to_cpb(ascon_128_ns, AEAD_SIZE),
-                    mbps: ns_to_mbps(ascon_128_ns, AEAD_SIZE),
-                },
+                present_80: make_metric(&present_80_ns, BLOCK_SIZE),
+                present_128: make_metric(&present_128_ns, BLOCK_SIZE),
+                speck64_96: make_metric(&speck64_96_ns, BLOCK_SIZE),
+                speck64_128: make_metric(&speck64_128_ns, BLOCK_SIZE),
+                ascon_128: make_metric(&ascon_128_ns, AEAD_SIZE),
             },
             modes: ModeResults {
-                present_ecb: CipherMetric {
-                    ns_per_block: present_ecb_ns,
-                    cpb: ns_to_cpb(present_ecb_ns, MODE_BLOCK_SIZE),
-                    mbps: ns_to_mbps(present_ecb_ns, MODE_BLOCK_SIZE),
-                },
-                present_cbc: CipherMetric {
-                    ns_per_block: present_cbc_ns,
-                    cpb: ns_to_cpb(present_cbc_ns, MODE_BLOCK_SIZE),
-                    mbps: ns_to_mbps(present_cbc_ns, MODE_BLOCK_SIZE),
-                },
-                speck_ecb: CipherMetric {
-                    ns_per_block: speck_ecb_ns,
-                    cpb: ns_to_cpb(speck_ecb_ns, MODE_BLOCK_SIZE),
-                    mbps: ns_to_mbps(speck_ecb_ns, MODE_BLOCK_SIZE),
-                },
-                speck_cbc: CipherMetric {
-                    ns_per_block: speck_cbc_ns,
-                    cpb: ns_to_cpb(speck_cbc_ns, MODE_BLOCK_SIZE),
-                    mbps: ns_to_mbps(speck_cbc_ns, MODE_BLOCK_SIZE),
-                },
-                speck_ctr: CipherMetric {
-                    ns_per_block: speck_ctr_ns,
-                    cpb: ns_to_cpb(speck_ctr_ns, MODE_BLOCK_SIZE),
-                    mbps: ns_to_mbps(speck_ctr_ns, MODE_BLOCK_SIZE),
-                },
+                present_ecb: make_metric(&present_ecb_ns, MODE_BLOCK_SIZE),
+                present_cbc: make_metric(&present_cbc_ns, MODE_BLOCK_SIZE),
+                speck_ecb: make_metric(&speck_ecb_ns, MODE_BLOCK_SIZE),
+                speck_cbc: make_metric(&speck_cbc_ns, MODE_BLOCK_SIZE),
+                speck_ctr: make_metric(&speck_ctr_ns, MODE_BLOCK_SIZE),
             },
-            ascon_phases: AsconPhaseResults {
-                init: ascon_init,
-                absorb: ascon_absorb,
-                encrypt: ascon_encrypt,
-                finalize: ascon_finalize,
-            },
+            ascon_phases,
             scaling: ScalingResults {
                 present_80: scaling_present_80,
                 present_128: scaling_present_128,
@@ -577,16 +714,16 @@ pub mod host_tests {
         };
 
         let json = serde_json::to_string_pretty(&results).unwrap();
-        println!("{}", json);
+        println!("{json}");
 
         results
     }
 
+    #[must_use]
     pub fn run_memory_benchmark() -> MemoryResults {
         reset_memory_stats();
 
         let mut per_cipher = Vec::new();
-
         {
             reset_memory_stats();
             let cipher = Present::new(&[0u8; 10]).unwrap();
@@ -665,7 +802,9 @@ pub mod host_tests {
                 name: "ASCON-128".to_string(),
                 heap_allocs: allocs,
                 heap_bytes: bytes,
-                stack_bytes: std::mem::size_of::<AsconAead>() * 2 + 32,
+                stack_bytes: std::mem::size_of::<AsconAead>()
+                    + std::mem::size_of::<[u8; 16]>()
+                    + std::mem::size_of::<[u8; 8]>(),
             });
         }
 

@@ -95,6 +95,10 @@ pub struct Present {
 }
 
 impl Present {
+    /// Creates a new PRESENT cipher with the given key.
+    ///
+    /// # Errors
+    /// Returns an error if the key length is not 10 bytes (80-bit) or 16 bytes (128-bit).
     pub fn new(key: &[u8]) -> Result<Self, &'static str> {
         match key.len() {
             10 => {
@@ -159,24 +163,40 @@ impl Present {
     }
 }
 
+/// Encrypts an 8-byte block using PRESENT-80.
+///
+/// # Panics
+/// Panics if the key is not exactly 10 bytes.
 #[must_use]
 pub fn encrypt(plaintext: [u8; 8], key: &[u8; 10]) -> [u8; 8] {
     let cipher = Present::new(key).unwrap();
     cipher.encrypt_block(plaintext)
 }
 
+/// Decrypts an 8-byte block using PRESENT-80.
+///
+/// # Panics
+/// Panics if the key is not exactly 10 bytes.
 #[must_use]
 pub fn decrypt(ciphertext: [u8; 8], key: &[u8; 10]) -> [u8; 8] {
     let cipher = Present::new(key).unwrap();
     cipher.decrypt_block(ciphertext)
 }
 
+/// Encrypts an 8-byte block using PRESENT-128.
+///
+/// # Panics
+/// Panics if the key is not exactly 16 bytes.
 #[must_use]
 pub fn encrypt_128(plaintext: [u8; 8], key: &[u8; 16]) -> [u8; 8] {
     let cipher = Present::new(key).unwrap();
     cipher.encrypt_block(plaintext)
 }
 
+/// Decrypts an 8-byte block using PRESENT-128.
+///
+/// # Panics
+/// Panics if the key is not exactly 16 bytes.
 #[must_use]
 pub fn decrypt_128(ciphertext: [u8; 8], key: &[u8; 16]) -> [u8; 8] {
     let cipher = Present::new(key).unwrap();
@@ -237,6 +257,10 @@ pub mod modes {
 pub mod test_vectors {
     use super::Present;
 
+    /// Runs all PRESENT test vectors.
+    ///
+    /// # Panics
+    /// Panics if key creation fails.
     #[must_use]
     pub fn run_tests() -> bool {
         let mut failed = 0;

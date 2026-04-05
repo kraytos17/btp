@@ -1,3 +1,4 @@
+#[cfg(feature = "embedded")]
 use rp2040_hal::Timer;
 
 pub static mut PRESENT_RESULT: u64 = 0;
@@ -231,6 +232,9 @@ fn bench_ascon_detailed(timer: Timer) {
 pub mod modes {
     use crate::present::{Present, modes as present_modes};
     use crate::speck::{Speck64, modes as speck_modes};
+
+    #[cfg(feature = "embedded")]
+    #[cfg(feature = "embedded")]
     use rp2040_hal::Timer;
 
     pub static mut PRESENT_ECB_RESULT: u64 = 0;
@@ -239,6 +243,10 @@ pub mod modes {
     pub static mut SPECK_CBC_RESULT: u64 = 0;
     pub static mut SPECK_CTR_RESULT: u64 = 0;
 
+    /// Benchmarks PRESENT modes.
+    ///
+    /// # Panics
+    /// Panics if key creation fails.
     pub fn bench_present_modes(timer: Timer) {
         let key: [u8; 10] = [0x00; 10];
         let cipher = Present::new(&key).unwrap();
@@ -284,6 +292,10 @@ pub mod modes {
         }
     }
 
+    /// Benchmarks SPECK modes.
+    ///
+    /// # Panics
+    /// Panics if key creation fails.
     pub fn bench_speck_modes(timer: Timer) {
         let key: [u32; 3] = [0x0302_0100, 0x0b0a_0908, 0x1312_1110];
         let cipher = Speck64::new(&key).unwrap();

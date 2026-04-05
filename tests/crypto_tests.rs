@@ -7,5 +7,5 @@ fn test_all_ciphers() {
 
 #[test]
 fn benchmark_host() {
-    btp::benchmark_host();
+    let _ = btp::benchmark_host();
 }

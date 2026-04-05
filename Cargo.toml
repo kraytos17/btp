@@ -25,6 +25,7 @@ required-features = ["std"]
 default = ["embedded"]
 embedded = ["rp2040-hal", "rp-pico", "cortex-m", "cortex-m-rt", "panic-halt"]
 std = []
+kat-tests = ["std"]
 
 [dependencies]
 rp2040-hal = { version = "0.10", features = ["rt", "critical-section-impl"], optional = true }
