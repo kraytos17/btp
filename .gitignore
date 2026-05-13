@@ -1,3 +1,7 @@
 /target
 .venv
 .ruff_cache
+__pycache__/
+
+# Benchmark outputs
+bench_results/

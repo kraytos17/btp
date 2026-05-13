@@ -1,69 +1,99 @@
-# BTP - Embedded Cryptography Benchmark
+# BTP - Lightweight Cryptography Library
 
-A `no_std` Rust implementation of PRESENT, SPECK, and ASCON cryptographic algorithms for the Raspberry Pi Pico (RP2040), with hardware benchmarking via UART output.
+A `no_std` Rust implementation of PRESENT, SPECK, and ASCON cryptographic algorithms for embedded systems (Raspberry Pi Pico RP2040), with comprehensive benchmarking.
 
 ## Features
 
 ### Cryptographic Algorithms
 
 - **PRESENT-80/128**: 64-bit block cipher with 80-bit and 128-bit key variants
-- **SPECK-64/96 & SPECK-64/128**: ARX-based block cipher (Add-Rotate-XOR)
-- **ASCON-128**: AEAD (Authenticated Encryption with Associated Data) and ASCON-Hash
+- **SPECK-64/96 & SPECK-64/128**: ARX-based lightweight block cipher
+- **ASCON-128 AEAD**: NIST SP 800-232 compliant authenticated encryption
+- **ASCON-Hash256**: Sponge-based hash function
 
 ### Operating Modes
 
 - ECB (Electronic Codebook)
-- CBC (Cipher Block Chaining)  
+- CBC (Cipher Block Chaining)
 - CTR (Counter Mode) - SPECK only
-
-### Hardware Benchmarking
-
-- Hardware timer-based cycle-accurate benchmarking on RP2040
-- UART output at 115200 baud (GPIO0=TX, GPIO1=RX)
-- Results include cycles per byte (cpb) for each algorithm
 
 ## Project Structure
 
 ```
 btp/
-├── Cargo.toml                    # Project configuration
-├── memory.x                      # RP2040 memory layout
-├── .cargo/config.toml           # Build target configuration
+├── Cargo.toml              # Project configuration
+├── memory.x               # RP2040 memory layout
+├── .cargo/config.toml     # Build target configuration
+├── requirements.txt       # Python dependencies for visualization
 ├── src/
-│   ├── main.rs                 # Embedded entry point
-│   ├── lib.rs                  # Library root (std feature)
-│   ├── present.rs              # PRESENT cipher implementation
-│   ├── speck.rs                # SPECK cipher implementation
-│   ├── ascon.rs               # ASCON AEAD & Hash implementation
-│   └── benchmark.rs           # Hardware benchmarking
-└── tests/
-    └── crypto_tests.rs        # Host-based tests
+│   ├── lib.rs            # Library root
+│   ├── main.rs           # Embedded entry point (RP2040)
+│   ├── main_host.rs      # Host entry point
+│   ├── present.rs        # PRESENT cipher implementation
+│   ├── speck.rs          # SPECK cipher implementation
+│   ├── ascon.rs          # ASCON AEAD & Hash (NIST SP 800-232)
+│   ├── benchmark.rs      # Hardware benchmarking (embedded)
+│   ├── energy.rs         # Energy estimation
+│   └── stats.rs          # Statistical analysis
+├── tests/
+│   ├── ascon_tests.rs    # ASCON unit tests + KAT
+│   ├── present_tests.rs  # PRESENT unit tests + KAT
+│   └── speck_tests.rs    # SPECK unit tests + KAT
+├── benches/
+│   └── ascon_bench.rs    # Criterion benchmarks
+├── bench/
+│   ├── visualize.py      # Python visualization
+│   └── requirements.txt  # Visualization dependencies
+├── bench_results/        # Benchmark output (generated)
+└── test_data/           # KAT test vectors
+```
+
+## Quick Start
+
+### Run Tests
+
+```bash
+cargo test --no-default-features --features std
+```
+
+### Run Benchmarks
+
+```bash
+cargo bench --no-default-features --features std --bench ascon_bench
+```
+
+### Generate Charts
+
+```bash
+uv run python bench/visualize.py
 ```
 
 ## Building
 
 ### Prerequisites
 
-- Rust toolchain with thumbv6m-none-eabi target:
-  ```bash
-  rustup target add thumbv6m-none-eabi
-  ```
+**Rust toolchain:**
+```bash
+rustup target add thumbv6m-none-eabi  # For embedded
+cargo install elf2uf2-rs             # For UF2 generation
+```
 
-- `elf2uf2-rs` for UF2 generation:
-  ```bash
-  cargo install elf2uf2-rs
-  ```
+**Python visualization:**
+```bash
+uv pip install -r requirements.txt
+```
 
 ### Build Commands
 
-**For embedded target (Raspberry Pi Pico):**
+**Embedded target (Raspberry Pi Pico):**
 ```bash
 cargo build --release --target thumbv6m-none-eabi
 ```
 
-**For host testing:**
+**Host testing/benchmarking:**
 ```bash
 cargo test --no-default-features --features std
+cargo bench --no-default-features --features std --bench ascon_bench
 ```
 
 ## Flashing to Pico
@@ -74,7 +104,7 @@ cargo test --no-default-features --features std
    ```
 
 2. **Enter bootloader mode:**
-   - Hold the BOOT button on the Pico
+   - Hold BOOT button on Pico
    - Plug in USB while holding BOOT
    - Release button (Pico appears as RPI-RP2 drive)
 
@@ -83,66 +113,79 @@ cargo test --no-default-features --features std
    cp btp.uf2 /path/to/RPI-RP2/
    ```
 
-   The Pico will automatically reboot and run the benchmark.
+## Benchmarking
 
-## Viewing Results
+### Host Benchmarks (criterion)
 
-Connect to UART at 115200 baud:
+The project uses [criterion](https://bheisner.github.io/criterion.rs/) for statistical benchmarking on the host machine.
+
+**Run all benchmarks:**
+```bash
+cargo bench --bench ascon_bench
+```
+
+**Benchmark groups:**
+- `ascon-aead128` - AEAD encryption with varying PT/AD lengths
+- `ascon-hash256` - Hash operations
+- `ascon-phases` - Per-phase breakdown (init, absorb, encrypt, finalize)
+- `ascon-scaling` - Message length scaling (8-4096 bytes)
+- `present-80-ecb` / `present-128-ecb` - PRESENT ECB mode
+- `speck-64-96-ecb` - SPECK ECB mode
+
+**Output locations:**
+- `target/criterion/*/new/estimates.json` - Raw JSON with statistics
+- `target/criterion/report/index.html` - HTML report
+- `bench_results/` - Generated charts and CSV
+
+### Hardware Benchmarks (RP2040)
+
+Hardware cycle-accurate benchmarking on the Raspberry Pi Pico:
+
+1. Flash the firmware (see above)
+2. Connect UART at 115200 baud:
+   ```bash
+   picocom -b 115200 /dev/ttyACM0
+   minicom -b 115200 -o -D /dev/ttyACM0
+   ```
+
+## Visualization
+
+Generate paper-ready charts from benchmark results:
 
 ```bash
-# Using picocom
-picocom -b 115200 /dev/ttyACM0
-
-# Using minicom
-minicom -b 115200 -o -D /dev/ttyACM0
+uv run python bench/visualize.py
 ```
 
-Expected output:
-```
-=== BTP Crypto Benchmark ===
+**Output files:**
+- `bench_results/criterion_results.csv` - All benchmark data
+- `bench_results/throughput_comparison.png/pdf` - Throughput charts
+- `bench_results/cycles_per_byte.png/pdf` - Efficiency charts
+- `bench_results/power_comparison.png/pdf` - Power estimates
+- `bench_results/benchmark_table.tex` - LaTeX table
 
-Running tests and benchmarks...
+## Known Answer Tests
 
-=== Results ===
-Tests passed: true
+### ASCON (NIST SP 800-232)
 
-Block cipher benchmarks (cycles per byte):
-  PRESENT-80:  XXX cpb
-  PRESENT-128: XXX cpb
-  SPECK-64/96: XXX cpb
-  SPECK-64/128: XXX cpb
-  ASCON-128:   XXX cpb
+The ASCON implementation follows NIST SP 800-232 exactly:
+- IV constants: `0x00000800806c0001`
+- Little-endian byte ordering
+- Padding: 0x01
+- Hash squeeze: 4 rounds of P12 between 8-byte blocks
 
-ASCON phase breakdown (cycles):
-  Init:     XXX
-  Absorb:   XXX
-  Encrypt:  XXX
-  Finalize: XXX
+Test vectors from: https://csrc.nist.gov/projects/computational-cryptography/cryptographic-standardization/initial-assessments
 
-Mode benchmarks (64-byte block, cycles per byte):
-  PRESENT ECB: XXX cpb
-  PRESENT CBC: XXX cpb
-  SPECK ECB:   XXX cpb
-  SPECK CBC:   XXX cpb
-  SPECK CTR:   XXX cpb
+### PRESENT & SPECK
 
-=== Done ===
-```
-
-## Clippy Linting
-
-The project is clippy-clean with strict warnings enabled:
-
-```bash
-cargo clippy -- -W clippy::all -W clippy::pedantic
-```
+KAT vectors verified against reference implementations.
 
 ## Features
 
-| Feature   | Description                                    |
-|-----------|------------------------------------------------|
-| `embedded` | Default. Builds for RP2040 (no_std)          |
-| `std`     | Builds for host machine with standard library |
+| Feature    | Description                              |
+|------------|------------------------------------------|
+| `embedded` | Default. Builds for RP2040 (no_std)      |
+| `std`      | Builds for host with standard library     |
+| `kat-tests`| Enables KAT verification tests            |
 
 ## Technical Details
 
@@ -150,21 +193,29 @@ cargo clippy -- -W clippy::all -W clippy::pedantic
 
 - 64-bit block, 80-bit or 128-bit key
 - 31 rounds
-- S-box based substitution + bit permutation (P-layer)
-- Implemented in `src/present.rs`
+- S-box substitution + bit permutation
+- Located in `src/present.rs`
 
 ### SPECK
 
 - 64-bit block, 96-bit or 128-bit key
 - 26-27 rounds (variant dependent)
 - ARX design (Add-Rotate-XOR)
-- Implemented in `src/speck.rs`
+- Located in `src/speck.rs`
 
-### ASCON-128
+### ASCON-128 (NIST SP 800-232)
 
 - 128-bit key, 128-bit nonce
 - Sponge-based AEAD
-- 6 or 12 rounds (variant dependent)
-- Supports associated data
-- Also includes ASCON-Hash (256-bit output)
-- Implemented in `src/ascon.rs`
+- 6 rounds for initialization, 12 for data processing
+- Supports associated data (AD)
+- ASCON-Hash256 with 32-byte output
+- Located in `src/ascon.rs`
+
+## Clippy
+
+The project is clippy-clean:
+
+```bash
+cargo clippy -- -W clippy::all -W clippy::pedantic
+```

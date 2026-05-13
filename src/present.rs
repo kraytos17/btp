@@ -54,18 +54,22 @@ fn p_layer_inv(state: u64) -> u64 {
 
 fn generate_round_keys_80(key: [u8; 10]) -> [u64; 32] {
     let mut round_keys = [0u64; 32];
-    let mut key_state = 0u128;
-    for (i, &byte) in key.iter().enumerate() {
-        key_state |= u128::from(byte) << (i * 8);
-    }
+    let mut key = u128::from(key[9])
+        | (u128::from(key[8]) << 8)
+        | (u128::from(key[7]) << 16)
+        | (u128::from(key[6]) << 24)
+        | (u128::from(key[5]) << 32)
+        | (u128::from(key[4]) << 40)
+        | (u128::from(key[3]) << 48)
+        | (u128::from(key[2]) << 56)
+        | (u128::from(key[1]) << 64)
+        | (u128::from(key[0]) << 72);
 
-    for (i, rk) in round_keys.iter_mut().enumerate() {
-        *rk = (key_state >> 79) as u64;
-
-        let top = ((key_state >> 76) & 0xF) as usize;
-        let top = u128::from(SBOX[top]);
-        key_state = ((key_state & ((1u128 << 76) - 1)) << 4) | (top << 76);
-        key_state ^= ((i as u128) << 15) | ((i as u128) << 14);
+    for i in 1..=32 {
+        round_keys[i - 1] = (key >> 16) as u64;
+        key = ((key & ((1u128 << 19) - 1)) << 61) | (key >> 19);
+        key = (u128::from(SBOX[(key >> 76) as usize]) << 76) | (key & ((1u128 << 76) - 1));
+        key ^= (i as u128) << 15;
     }
 
     round_keys
@@ -73,18 +77,30 @@ fn generate_round_keys_80(key: [u8; 10]) -> [u64; 32] {
 
 fn generate_round_keys_128(key: [u8; 16]) -> [u64; 32] {
     let mut round_keys = [0u64; 32];
-    let mut key_state = 0u128;
-    for (i, &byte) in key.iter().enumerate() {
-        key_state |= u128::from(byte) << (i * 8);
-    }
+    let mut key = u128::from(key[0]) << 120
+        | u128::from(key[1]) << 112
+        | u128::from(key[2]) << 104
+        | u128::from(key[3]) << 96
+        | u128::from(key[4]) << 88
+        | u128::from(key[5]) << 80
+        | u128::from(key[6]) << 72
+        | u128::from(key[7]) << 64
+        | u128::from(key[8]) << 56
+        | u128::from(key[9]) << 48
+        | u128::from(key[10]) << 40
+        | u128::from(key[11]) << 32
+        | u128::from(key[12]) << 24
+        | u128::from(key[13]) << 16
+        | u128::from(key[14]) << 8
+        | u128::from(key[15]);
 
-    for (i, rk) in round_keys.iter_mut().enumerate() {
-        *rk = (key_state >> 64) as u64;
-
-        let top = ((key_state >> 60) & 0xF) as usize;
-        let top = u128::from(SBOX[top]);
-        key_state = ((key_state & ((1u128 << 60) - 1)) << 4) | (top << 60);
-        key_state ^= ((i as u128) << 15) | ((i as u128) << 14);
+    for i in 1..=32 {
+        round_keys[i - 1] = (key >> 64) as u64;
+        key = ((key & ((1u128 << 67) - 1)) << 61) | (key >> 67);
+        key = (u128::from(SBOX[(key >> 124) as usize]) << 124)
+            | (u128::from(SBOX[((key >> 120) & 0xF) as usize]) << 120)
+            | (key & ((1u128 << 120) - 1));
+        key ^= (i as u128) << 62;
     }
 
     round_keys
@@ -123,7 +139,7 @@ impl Present {
     pub fn encrypt_block(&self, block: [u8; 8]) -> [u8; 8] {
         let mut state = 0u64;
         for (i, &byte) in block.iter().enumerate() {
-            state |= u64::from(byte) << (i * 8);
+            state |= u64::from(byte) << (56 - i * 8);
         }
 
         for rk in &self.round_keys[..31] {
@@ -131,11 +147,11 @@ impl Present {
             state = sbox_layer(state);
             state = p_layer(state);
         }
+        
         state ^= self.round_keys[31];
-
         let mut ciphertext = [0u8; 8];
         for (i, byte) in ciphertext.iter_mut().enumerate() {
-            *byte = ((state >> (i * 8)) & 0xFF) as u8;
+            *byte = ((state >> (56 - i * 8)) & 0xFF) as u8;
         }
         ciphertext
     }
@@ -144,11 +160,10 @@ impl Present {
     pub fn decrypt_block(&self, block: [u8; 8]) -> [u8; 8] {
         let mut state = 0u64;
         for (i, &byte) in block.iter().enumerate() {
-            state |= u64::from(byte) << (i * 8);
+            state |= u64::from(byte) << (56 - i * 8);
         }
 
         state ^= self.round_keys[31];
-
         for rk in self.round_keys[..31].iter().rev() {
             state = p_layer_inv(state);
             state = sbox_layer_inv(state);
@@ -157,7 +172,7 @@ impl Present {
 
         let mut plaintext = [0u8; 8];
         for (i, byte) in plaintext.iter_mut().enumerate() {
-            *byte = ((state >> (i * 8)) & 0xFF) as u8;
+            *byte = ((state >> (56 - i * 8)) & 0xFF) as u8;
         }
         plaintext
     }
@@ -263,9 +278,13 @@ pub mod test_vectors {
     /// Panics if key creation fails.
     #[must_use]
     pub fn run_tests() -> bool {
+        run_roundtrip_tests()
+    }
+
+    /// Encrypt/decrypt roundtrip tests for PRESENT-80 and PRESENT-128.
+    fn run_roundtrip_tests() -> bool {
         let mut failed = 0;
 
-        // Test encrypt/decrypt roundtrip for PRESENT-80
         for key_byte in 0u8..5u8 {
             let key = [key_byte; 10];
             let cipher = Present::new(&key).unwrap();
@@ -279,7 +298,6 @@ pub mod test_vectors {
             }
         }
 
-        // Test encrypt/decrypt roundtrip for PRESENT-128
         for key_byte in 0u8..3u8 {
             let key = [key_byte; 16];
             let cipher = Present::new(&key).unwrap();
@@ -296,3 +314,5 @@ pub mod test_vectors {
         failed == 0
     }
 }
+
+pub mod kat_iso_vectors;

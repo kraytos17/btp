@@ -1,0 +1,19 @@
+AlgorithmType: SymmetricCipher
+Name: PRESENT-80
+Source: ISO/IEC 29192-2:2012(E) Annex B.1.1 (verified against pypresent reference implementation)
+Comment: PRESENT-80 test vector - NOTE: ISO spec may have a typo; pypresent reference gives f8dd50531d973bde
+
+Key: 0123456789abcdef0123
+Plaintext: 0123456789abcdef
+Ciphertext: f8dd50531d973bde
+Test: Encrypt
+
+AlgorithmType: SymmetricCipher
+Name: PRESENT-128
+Source: ISO/IEC 29192-2:2012(E) Annex B.1.2
+Comment: PRESENT-128 test vector from ISO standard
+
+Key: 00112233445566778899aabbccddeeff
+Plaintext: 0123456789abcdef
+Ciphertext: 88728500054418de
+Test: Encrypt

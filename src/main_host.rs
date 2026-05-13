@@ -4,9 +4,6 @@ mod ascon;
 mod present;
 mod speck;
 
-use btp::benchmark_host;
-
 fn main() {
-    println!("=== Host Benchmark ===\n");
-    let _ = benchmark_host();
+    println!("Run 'cargo bench' to benchmark all ciphers with criterion.");
 }

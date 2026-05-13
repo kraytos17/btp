@@ -147,6 +147,7 @@ pub enum AsconVariant {
     Ascon80pq,
 }
 
+#[derive(Clone)]
 pub struct AsconAead {
     state: [u64; 5],
     variant: AsconVariant,
@@ -192,9 +193,8 @@ impl AsconAead {
 
     pub fn absorb_ad(&mut self, ad: &[u8]) {
         match self.variant {
-            AsconVariant::Ascon128 => self.absorb_ad_rate8(ad),
+            AsconVariant::Ascon128 | AsconVariant::Ascon80pq => self.absorb_ad_rate8(ad),
             AsconVariant::Ascon128a => self.absorb_ad_rate16(ad),
-            AsconVariant::Ascon80pq => self.absorb_ad_rate8(ad),
         }
     }
 
@@ -250,9 +250,10 @@ impl AsconAead {
 
     pub fn encrypt_in_place(&mut self, plaintext: &[u8], ciphertext: &mut [u8]) {
         match self.variant {
-            AsconVariant::Ascon128 => self.encrypt_rate8(plaintext, ciphertext),
+            AsconVariant::Ascon128 | AsconVariant::Ascon80pq => {
+                self.encrypt_rate8(plaintext, ciphertext);
+            }
             AsconVariant::Ascon128a => self.encrypt_rate16(plaintext, ciphertext),
-            AsconVariant::Ascon80pq => self.encrypt_rate8(plaintext, ciphertext),
         }
     }
 
@@ -332,9 +333,10 @@ impl AsconAead {
 
     pub fn decrypt_in_place(&mut self, ciphertext: &[u8], plaintext: &mut [u8]) {
         match self.variant {
-            AsconVariant::Ascon128 => self.decrypt_rate8(ciphertext, plaintext),
+            AsconVariant::Ascon128 | AsconVariant::Ascon80pq => {
+                self.decrypt_rate8(ciphertext, plaintext);
+            }
             AsconVariant::Ascon128a => self.decrypt_rate16(ciphertext, plaintext),
-            AsconVariant::Ascon80pq => self.decrypt_rate8(ciphertext, plaintext),
         }
     }
 
@@ -376,8 +378,10 @@ impl AsconAead {
             self.state[0] ^= cx;
             let p = self.state[0];
             store_u64(p, &mut plaintext[i..i + remaining]);
-            let mask = !((1u64 << (8 * remaining)) - 1);
-            self.state[0] = (self.state[0] & mask) ^ cx;
+            // Mask preserves upper bytes of state before XOR
+            // Then OR with ciphertext bytes to match encryption pattern
+            let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (8 * remaining);
+            self.state[0] = (self.state[0] & !mask) ^ cx;
         }
     }
 
@@ -391,8 +395,8 @@ impl AsconAead {
             self.state[0] ^= cx;
             let p = self.state[0];
             store_u64(p, &mut plaintext[..len]);
-            let mask = !((1u64 << (8 * len)) - 1);
-            self.state[0] = (self.state[0] & mask) ^ cx;
+            let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (8 * len);
+            self.state[0] = (self.state[0] & !mask) ^ cx;
         } else {
             let cx0 = load_u64(&ciphertext[..8]);
             self.state[0] ^= cx0;
@@ -409,8 +413,8 @@ impl AsconAead {
                 self.state[1] ^= cx1;
                 let p1 = self.state[1];
                 store_u64(p1, &mut plaintext[8..len]);
-                let mask = !((1u64 << (8 * rem2)) - 1);
-                self.state[1] = (self.state[1] & mask) ^ cx1;
+                let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (8 * rem2);
+                self.state[1] = (self.state[1] & !mask) ^ cx1;
             } else {
                 self.state[1] ^= 0x01;
             }
@@ -464,12 +468,21 @@ impl AsconHash {
     }
 
     #[must_use]
-    pub fn finalize(self) -> [u8; 32] {
+    pub fn finalize(mut self) -> [u8; 32] {
         let mut hash = [0u8; 32];
+
+        // First squeeze (8 bytes from S0)
         hash[0..8].copy_from_slice(&self.state[0].to_le_bytes());
-        hash[8..16].copy_from_slice(&self.state[1].to_le_bytes());
-        hash[16..24].copy_from_slice(&self.state[2].to_le_bytes());
-        hash[24..32].copy_from_slice(&self.state[3].to_le_bytes());
+
+        // Remaining 3 squeezes with permutations
+        let mut offset = 8;
+        while offset < 32 {
+            permutation_12(&mut self.state);
+            let remaining = 32 - offset;
+            let n = remaining.min(8);
+            hash[offset..offset + n].copy_from_slice(&self.state[0].to_le_bytes()[..n]);
+            offset += n;
+        }
         hash
     }
 }
@@ -573,46 +586,57 @@ pub fn decrypt_aead_varlen(
 }
 
 pub mod test_vectors {
-    use super::{AsconHash, decrypt_aead_varlen, encrypt_aead_varlen};
+    extern crate alloc;
+    use super::{AsconAead, AsconHash, decrypt_aead};
 
     #[must_use]
     pub fn run_tests() -> bool {
-        let mut failed = 0;
         let key: [u8; 16] = [
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
             0x0e, 0x0f,
         ];
+
         let nonce: [u8; 16] = [
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-            0x0e, 0x0f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x1f,
         ];
 
-        let plaintext: [u8; 8] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
-        let ad: [u8; 8] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+        let plaintext: [u8; 16] = [
+            0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ];
 
-        let mut output = [0u8; 24];
-        let ct_len = encrypt_aead_varlen(&key, &nonce, &plaintext, &ad, &mut output);
-        let ciphertext = &output[..ct_len];
+        let ad: [u8; 0] = [];
+        let mut cipher = AsconAead::new(&key, &nonce);
+        cipher.absorb_ad(&ad);
 
-        let mut pt_buf = [0u8; 8];
-        let result = decrypt_aead_varlen(&key, &nonce, ciphertext, &ad, &mut pt_buf);
-        if result.is_none() || pt_buf[..8] != plaintext {
-            failed += 1;
-        }
+        let mut ct = [0u8; 16];
+        cipher.encrypt_in_place(&plaintext, &mut ct);
+        let tag = cipher.finalize(&key);
+
+        let mut ct_with_tag = [0u8; 32];
+        ct_with_tag[..16].copy_from_slice(&ct);
+        ct_with_tag[16..].copy_from_slice(&tag);
+
+        let result = decrypt_aead(&key, &nonce, &ct_with_tag, &ad);
+
+        assert!(result.is_some(), "AEAD decrypt failed");
+        assert_eq!(result.unwrap(), plaintext, "AEAD plaintext mismatch");
 
         let mut hash = AsconHash::new();
-        hash.absorb(b"test message");
+        hash.absorb(b"test");
         let hash_output = hash.finalize();
-        if hash_output == [0u8; 32] {
-            failed += 1;
-        }
 
-        failed == 0
+        assert!(hash_output != [0u8; 32], "Hash should not be all zeros");
+
+        true
     }
 }
 
 pub mod kat_hash_vectors;
+pub mod kat_hash_vectors_embedded;
 pub mod kat_vectors;
+pub mod kat_vectors_embedded;
 
 #[cfg(feature = "std")]
 pub mod kat_tests {
@@ -638,7 +662,7 @@ pub mod kat_tests {
             eprintln!("MISMATCH for vector {}", vector.count);
             eprintln!("  PT len: {}, AD len: {}", vector.pt.len(), vector.ad.len());
             eprintln!("  Expected CT: {:02X?}", vector.ct);
-            eprintln!("  Actual CT:   {:02X?}", actual_output);
+            eprintln!("  Actual CT:   {actual_output:02X?}");
             return false;
         }
 
@@ -653,9 +677,6 @@ pub mod kat_tests {
         for v in &vectors {
             if run_kat_vector(v) {
                 passed += 1;
-            }
-            if passed > 0 && passed < 5 {
-                break;
             }
         }
 

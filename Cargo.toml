@@ -22,19 +22,19 @@ bench = false
 required-features = ["std"]
 
 [features]
-default = ["embedded"]
+default = []
+std = ["serde", "serde_json"]
 embedded = ["rp2040-hal", "rp-pico", "cortex-m", "cortex-m-rt", "panic-halt"]
-std = []
 kat-tests = ["std"]
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 rp2040-hal = { version = "0.10", features = ["rt", "critical-section-impl"], optional = true }
 rp-pico = { version = "0.9", optional = true }
 cortex-m = { version = "0.7", optional = true }
 cortex-m-rt = { version = "0.7", optional = true }
 panic-halt = { version = "0.2", optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 
 [profile.release]
 opt-level = "z"
@@ -44,4 +44,18 @@ debug = true
 panic = "abort"
 
 [profile.dev]
+opt-level = 2
 panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = true
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bench]]
+name = "ascon_bench"
+harness = false
