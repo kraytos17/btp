@@ -22,7 +22,6 @@ OUTPUT_DIR = Path("bench_results")
 HOST_CPU_MHZ = 2400.0
 RP2040_MHZ = 133.0
 
-# ── aesthetics ───────────────────────────────────────────────────────────────
 plt.rcParams.update(
     {
         "font.size": 11,
@@ -39,21 +38,22 @@ plt.rcParams.update(
     }
 )
 
-# ── color / style maps ───────────────────────────────────────────────────────
 COLORS = {
-    "ascon-aead128":    "#0077bb",
-    "ascon-hash256":    "#33bbee",
-    "ascon-hash":       "#009988",
-    "speck-64-96-ecb":  "#ee7733",
-    "speck-64-96-cbc":  "#cc5500",
-    "speck-64-96-ctr":  "#aa4400",
+    "ascon-aead128": "#0077bb",
+    "ascon-hash256": "#33bbee",
+    "ascon-hash": "#009988",
+    "speck-64-96-ecb": "#ee7733",
+    "speck-64-96-cbc": "#cc5500",
+    "speck-64-96-ctr": "#aa4400",
     "speck-64-128-ecb": "#ff9900",
     "speck-64-128-cbc": "#dd7700",
     "speck-64-128-ctr": "#bb5500",
-    "present-80-ecb":   "#cc3311",
-    "present-80-cbc":   "#aa2255",
-    "present-128-ecb":  "#aa66cc",
-    "present-128-cbc":  "#884499",
+    "present-80-ecb": "#cc3311",
+    "present-80-cbc": "#aa2255",
+    "present-80-ctr": "#dd1144",
+    "present-128-ecb": "#aa66cc",
+    "present-128-cbc": "#884499",
+    "present-128-ctr": "#775588",
 }
 
 FAMILY_MARKERS = {"ascon": "D", "speck": "^", "present": "s"}
@@ -61,34 +61,43 @@ MODE_LINESTYLES = {"ecb": "-", "cbc": "--", "ctr": ":"}
 
 # Human-readable labels for paper legends
 LABELS = {
-    "ascon-aead128":    "ASCON-AEAD128",
-    "ascon-hash256":    "ASCON-Hash256",
-    "ascon-hash":       "ASCON-Hash",
-    "speck-64-96-ecb":  "SPECK-64/96 ECB",
-    "speck-64-96-cbc":  "SPECK-64/96 CBC",
-    "speck-64-96-ctr":  "SPECK-64/96 CTR",
+    "ascon-aead128": "ASCON-AEAD128",
+    "ascon-hash256": "ASCON-Hash256",
+    "ascon-hash": "ASCON-Hash",
+    "speck-64-96-ecb": "SPECK-64/96 ECB",
+    "speck-64-96-cbc": "SPECK-64/96 CBC",
+    "speck-64-96-ctr": "SPECK-64/96 CTR",
     "speck-64-128-ecb": "SPECK-64/128 ECB",
     "speck-64-128-cbc": "SPECK-64/128 CBC",
     "speck-64-128-ctr": "SPECK-64/128 CTR",
-    "present-80-ecb":   "PRESENT-80 ECB",
-    "present-80-cbc":   "PRESENT-80 CBC",
-    "present-128-ecb":  "PRESENT-128 ECB",
-    "present-128-cbc":  "PRESENT-128 CBC",
+    "present-80-ecb": "PRESENT-80 ECB",
+    "present-80-cbc": "PRESENT-80 CBC",
+    "present-80-ctr": "PRESENT-80 CTR",
+    "present-128-ecb": "PRESENT-128 ECB",
+    "present-128-cbc": "PRESENT-128 CBC",
+    "present-128-ctr": "PRESENT-128 CTR",
 }
 
 FAST_GROUPS = [
-    "ascon-aead128", "ascon-hash256",
-    "speck-64-96-ecb", "speck-64-96-cbc", "speck-64-96-ctr",
-    "speck-64-128-ecb", "speck-64-128-cbc", "speck-64-128-ctr",
+    "ascon-aead128",
+    "ascon-hash256",
+    "speck-64-96-ecb",
+    "speck-64-96-cbc",
+    "speck-64-96-ctr",
+    "speck-64-128-ecb",
+    "speck-64-128-cbc",
+    "speck-64-128-ctr",
 ]
 SLOW_GROUPS = [
-    "present-80-ecb", "present-80-cbc",
-    "present-128-ecb", "present-128-cbc",
+    "present-80-ecb",
+    "present-80-cbc",
+    "present-80-ctr",
+    "present-128-ecb",
+    "present-128-cbc",
+    "present-128-ctr",
 ]
 ALL_CIPHER_GROUPS = FAST_GROUPS + SLOW_GROUPS
 
-
-# ── low-level helpers ─────────────────────────────────────────────────────────
 
 def get_family(group: str) -> str:
     for fam in ("ascon", "speck", "present"):
@@ -128,8 +137,6 @@ def parse_id(bench_id, group):
     return None
 
 
-# ── data loading ──────────────────────────────────────────────────────────────
-
 def collect():
     rows = []
     for p in CRITERION_DIR.rglob("*/new/estimates.json"):
@@ -145,7 +152,7 @@ def collect():
             bench_id = parts[i + 2]
             phase = bench_id
         else:
-            bench_id = "/".join(parts[i + 2: -2])
+            bench_id = "/".join(parts[i + 2 : -2])
             phase = None
 
         parsed = parse_id(bench_id, group)
@@ -176,7 +183,9 @@ def collect_aggregated():
         print(f"Warning: {agg_csv} not found. Run bench/aggregate_runs.py first.")
         return None
     df = pd.read_csv(agg_csv)
-    print(f"Loaded aggregated data: {len(df)} benchmarks from {df['num_runs'].iloc[0]} runs")
+    print(
+        f"Loaded aggregated data: {len(df)} benchmarks from {df['num_runs'].iloc[0]} runs"
+    )
     return df
 
 
@@ -213,8 +222,6 @@ def compute(df, metric):
     return df
 
 
-# ── core plotting primitives ──────────────────────────────────────────────────
-
 def _plot_lines(ax, df, groups, metric="throughput", fill_alpha=0.13):
     """Draw one line+CI-band per group onto *ax*."""
     for g in sorted(groups):
@@ -243,8 +250,11 @@ def _add_present_note(ax):
     ax.annotate(
         "Note: oscillation at small sizes reflects\n"
         "block-boundary padding (8-byte block).",
-        xy=(0.03, 0.04), xycoords="axes fraction",
-        fontsize=7.5, color="#666666", style="italic",
+        xy=(0.03, 0.04),
+        xycoords="axes fraction",
+        fontsize=7.5,
+        color="#666666",
+        style="italic",
     )
 
 
@@ -255,8 +265,6 @@ def _save(fname):
     plt.close()
     print(f"Saved: {fname}.png/pdf")
 
-
-# ── individual plots ──────────────────────────────────────────────────────────
 
 def plot_metric_split(df, metric, ylabel, fname, title):
     """Two-panel overview: fast ciphers left | PRESENT right."""
@@ -313,8 +321,13 @@ def plot_present_modes(df):
 
 def plot_all_ciphers_loglog(df):
     """One ECB representative per family — clean overview."""
-    reps = ["ascon-aead128", "ascon-hash256", "speck-64-96-ecb",
-            "present-80-ecb", "present-128-ecb"]
+    reps = [
+        "ascon-aead128",
+        "ascon-hash256",
+        "speck-64-96-ecb",
+        "present-80-ecb",
+        "present-128-ecb",
+    ]
     dfp = df[(df["type"] != "phase") & (df["group"].isin(reps))]
 
     fig, ax = plt.subplots(figsize=(6.5, 4))
@@ -334,12 +347,16 @@ def plot_phases(df):
     has_agg = "throughput_mean" in df.columns
     phase_order = ["init", "absorb_ad", "encrypt", "finalize"]
     phase_labels = {
-        "init": "Init", "absorb_ad": "Absorb AD",
-        "encrypt": "Encrypt", "finalize": "Finalize",
+        "init": "Init",
+        "absorb_ad": "Absorb AD",
+        "encrypt": "Encrypt",
+        "finalize": "Finalize",
     }
     phase_colors = {
-        "init": "#0077bb", "absorb_ad": "#33bbee",
-        "encrypt": "#ee7733", "finalize": "#cc3311",
+        "init": "#0077bb",
+        "absorb_ad": "#33bbee",
+        "encrypt": "#ee7733",
+        "finalize": "#cc3311",
     }
 
     fig, ax = plt.subplots(figsize=(6.5, 4))
@@ -356,15 +373,35 @@ def plot_phases(df):
             yerr_low = mean_val - pdata["low"].iloc[0]
             yerr_high = pdata["high"].iloc[0] - mean_val
 
-        ax.bar(i, mean_val, width=bar_width,
-               color=phase_colors.get(phase, "#aec7e8"),
-               alpha=0.85, label=phase_labels.get(phase, phase),
-               edgecolor="white", linewidth=1)
-        ax.errorbar(i, mean_val, yerr=[[yerr_low], [yerr_high]],
-                    fmt="none", color="black", capsize=4, capthick=1.5)
+        ax.bar(
+            i,
+            mean_val,
+            width=bar_width,
+            color=phase_colors.get(phase, "#aec7e8"),
+            alpha=0.85,
+            label=phase_labels.get(phase, phase),
+            edgecolor="white",
+            linewidth=1,
+        )
+        ax.errorbar(
+            i,
+            mean_val,
+            yerr=[[yerr_low], [yerr_high]],
+            fmt="none",
+            color="black",
+            capsize=4,
+            capthick=1.5,
+        )
         # Label offset: 4% above bar on linear scale
-        ax.text(i, mean_val * 1.04, f"{mean_val:.0f} ns",
-                ha="center", va="bottom", fontsize=9, color="#333333")
+        ax.text(
+            i,
+            mean_val * 1.04,
+            f"{mean_val:.0f} ns",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color="#333333",
+        )
 
     suffix = "Std Dev" if has_agg else "95% CI"
     ax.set_ylabel("Time (ns)")
@@ -379,15 +416,21 @@ def plot_phases(df):
 def plot_mode_overhead(df):
     """3-panel: PRESENT (linear Y) | SPECK-64/96 (log Y) | SPECK-64/128 (log Y)."""
     panels = [
-        ("PRESENT Mode Overhead",
-         ["present-80-ecb", "present-80-cbc", "present-128-ecb", "present-128-cbc"],
-         False),
-        ("SPECK-64/96 Mode Overhead",
-         ["speck-64-96-ecb", "speck-64-96-cbc", "speck-64-96-ctr"],
-         True),
-        ("SPECK-64/128 Mode Overhead",
-         ["speck-64-128-ecb", "speck-64-128-cbc", "speck-64-128-ctr"],
-         True),
+        (
+            "PRESENT Mode Overhead",
+            ["present-80-ecb", "present-80-cbc", "present-128-ecb", "present-128-cbc"],
+            False,
+        ),
+        (
+            "SPECK-64/96 Mode Overhead",
+            ["speck-64-96-ecb", "speck-64-96-cbc", "speck-64-96-ctr"],
+            True,
+        ),
+        (
+            "SPECK-64/128 Mode Overhead",
+            ["speck-64-128-ecb", "speck-64-128-cbc", "speck-64-128-ctr"],
+            True,
+        ),
     ]
 
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.5))
@@ -447,34 +490,128 @@ def plot_combined_comparison(df):
     _save("combined_comparison")
 
 
-# ── memory / energy / speedup tables ─────────────────────────────────────────
+def plot_power_consumption(df):
+    """Plot estimated energy per operation (nJ) vs message length - RP2040 model."""
+    dfp = df[df["type"] != "phase"]
+
+    v = RP2040_POWER["voltage_v"]
+    i = RP2040_POWER["current_ma"]
+    f = RP2040_POWER["frequency_hz"]
+    scale = v * i / f * 1e9
+
+    # Fast ciphers panel
+    df_fast = dfp[dfp["group"].isin(FAST_GROUPS)]
+    fig, (ax_f, ax_s) = plt.subplots(1, 2, figsize=(13, 4.5))
+
+    for g in sorted(df_fast["group"].unique()):
+        sub = df_fast[df_fast["group"] == g].sort_values("pt")
+        if sub.empty:
+            continue
+        # Energy per operation = mean (ns) * MHz * scale
+        # mean is in ns, so: (mean ns) * (RP2040_MHZ MHz) / 1000 * scale = nJ
+        energy_per_op = sub["mean"] * RP2040_MHZ / 1000 * scale
+        color = COLORS.get(g)
+        marker = FAMILY_MARKERS.get(get_family(g), "o")
+        ls = MODE_LINESTYLES.get(get_mode(g), "-")
+        label = LABELS.get(g, g)
+        ax_f.plot(
+            sub["pt"], energy_per_op, marker=marker, ls=ls, label=label, color=color
+        )
+
+    ax_f.set_xscale("log", base=2)
+    ax_f.set_yscale("log", base=10)
+    ax_f.set_xlabel("Message Length (bytes)")
+    ax_f.set_ylabel("Energy per Operation (nJ)")
+    ax_f.set_title("ASCON & SPECK — Estimated Energy")
+    ax_f.grid(True, which="both", ls="--", alpha=0.25)
+    ax_f.legend(frameon=False, fontsize=8, ncol=2)
+
+    # Present ciphers panel
+    df_slow = dfp[dfp["group"].isin(SLOW_GROUPS)]
+    for g in sorted(df_slow["group"].unique()):
+        sub = df_slow[df_slow["group"] == g].sort_values("pt")
+        if sub.empty:
+            continue
+        energy_per_op = sub["mean"] * RP2040_MHZ / 1000 * scale
+        color = COLORS.get(g)
+        marker = FAMILY_MARKERS.get(get_family(g), "o")
+        ls = MODE_LINESTYLES.get(get_mode(g), "-")
+        label = LABELS.get(g, g)
+        ax_s.plot(
+            sub["pt"], energy_per_op, marker=marker, ls=ls, label=label, color=color
+        )
+
+    ax_s.set_xscale("log", base=2)
+    ax_s.set_yscale("log", base=10)
+    ax_s.set_xlabel("Message Length (bytes)")
+    ax_s.set_ylabel("Energy per Operation (nJ)")
+    ax_s.set_title("PRESENT — Estimated Energy")
+    ax_s.grid(True, which="both", ls="--", alpha=0.25)
+    ax_s.legend(frameon=False, fontsize=8)
+    ax_s.annotate(
+        "Note: Estimated using RP2040\n(3.3V, 27mA @ 133MHz)",
+        xy=(0.03, 0.04),
+        xycoords="axes fraction",
+        fontsize=7.5,
+        color="#666666",
+        style="italic",
+    )
+
+    fig.suptitle("Estimated Power Consumption (RP2040)", fontsize=14, fontweight="bold")
+    _save("power_consumption")
+
 
 MEMORY_FOOTPRINT_DATA = {
-    "PRESENT-80":  {"key_size": "80 bits (10 bytes)",  "block_size": "64 bits (8 bytes)",
-                    "rounds": 32, "state_size": "8 bytes",
-                    "key_schedule": "80 bits → 32 round keys (64-bit each)",
-                    "rom_estimate": "~1.8 KB", "ram_estimate": "~24 bytes",
-                    "notes": "S-box (64B) + round keys (256B)"},
-    "PRESENT-128": {"key_size": "128 bits (16 bytes)", "block_size": "64 bits (8 bytes)",
-                    "rounds": 32, "state_size": "8 bytes",
-                    "key_schedule": "128 bits → 32 round keys (64-bit each)",
-                    "rom_estimate": "~2.2 KB", "ram_estimate": "~24 bytes",
-                    "notes": "Doubled S-box for 128-bit key schedule"},
-    "SPECK-64/96": {"key_size": "96 bits (12 bytes)",  "block_size": "64 bits (8 bytes)",
-                    "rounds": 26, "state_size": "16 bytes (2×u32)",
-                    "key_schedule": "96-bit → 3×u32 expanded key",
-                    "rom_estimate": "~0.9 KB", "ram_estimate": "~28 bytes",
-                    "notes": "Pure ARX — extremely compact, no S-box"},
-    "SPECK-64/128":{"key_size": "128 bits (16 bytes)", "block_size": "64 bits (8 bytes)",
-                    "rounds": 32, "state_size": "16 bytes (2×u32)",
-                    "key_schedule": "128-bit → 4×u32 expanded key",
-                    "rom_estimate": "~1.1 KB", "ram_estimate": "~32 bytes",
-                    "notes": "Pure ARX — highly compact on ARM Cortex-M0+"},
-    "ASCON-AEAD128":{"key_size": "128 bits (16 bytes)","block_size": "64 bits (8 bytes)",
-                    "rounds": "12 (AEAD) / 6 (hash)", "state_size": "40 bytes (5×u64)",
-                    "key_schedule": "Key + nonce initialisation",
-                    "rom_estimate": "~3.2 KB", "ram_estimate": "~48 bytes",
-                    "notes": "5-word permutation, complex initialisation"},
+    "PRESENT-80": {
+        "key_size": "80 bits (10 bytes)",
+        "block_size": "64 bits (8 bytes)",
+        "rounds": 32,
+        "state_size": "8 bytes",
+        "key_schedule": "80 bits → 32 round keys (64-bit each)",
+        "rom_estimate": "~1.8 KB",
+        "ram_estimate": "~24 bytes",
+        "notes": "S-box (64B) + round keys (256B)",
+    },
+    "PRESENT-128": {
+        "key_size": "128 bits (16 bytes)",
+        "block_size": "64 bits (8 bytes)",
+        "rounds": 32,
+        "state_size": "8 bytes",
+        "key_schedule": "128 bits → 32 round keys (64-bit each)",
+        "rom_estimate": "~2.2 KB",
+        "ram_estimate": "~24 bytes",
+        "notes": "Doubled S-box for 128-bit key schedule",
+    },
+    "SPECK-64/96": {
+        "key_size": "96 bits (12 bytes)",
+        "block_size": "64 bits (8 bytes)",
+        "rounds": 26,
+        "state_size": "16 bytes (2×u32)",
+        "key_schedule": "96-bit → 3×u32 expanded key",
+        "rom_estimate": "~0.9 KB",
+        "ram_estimate": "~28 bytes",
+        "notes": "Pure ARX — extremely compact, no S-box",
+    },
+    "SPECK-64/128": {
+        "key_size": "128 bits (16 bytes)",
+        "block_size": "64 bits (8 bytes)",
+        "rounds": 32,
+        "state_size": "16 bytes (2×u32)",
+        "key_schedule": "128-bit → 4×u32 expanded key",
+        "rom_estimate": "~1.1 KB",
+        "ram_estimate": "~32 bytes",
+        "notes": "Pure ARX — highly compact on ARM Cortex-M0+",
+    },
+    "ASCON-AEAD128": {
+        "key_size": "128 bits (16 bytes)",
+        "block_size": "64 bits (8 bytes)",
+        "rounds": "12 (AEAD) / 6 (hash)",
+        "state_size": "40 bytes (5×u64)",
+        "key_schedule": "Key + nonce initialisation",
+        "rom_estimate": "~3.2 KB",
+        "ram_estimate": "~48 bytes",
+        "notes": "5-word permutation, complex initialisation",
+    },
 }
 
 RP2040_POWER = {"voltage_v": 3.3, "current_ma": 27.0, "frequency_hz": 133_000_000}
@@ -489,10 +626,16 @@ def cycles_to_nanojoules(cycles: float) -> float:
 
 def generate_memory_table():
     rows = [
-        {"Cipher": c, "Key Size": d["key_size"], "Block Size": d["block_size"],
-         "State Size": d["state_size"], "Rounds": d["rounds"],
-         "ROM (est.)": d["rom_estimate"], "RAM (est.)": d["ram_estimate"],
-         "Notes": d.get("notes", "")}
+        {
+            "Cipher": c,
+            "Key Size": d["key_size"],
+            "Block Size": d["block_size"],
+            "State Size": d["state_size"],
+            "Rounds": d["rounds"],
+            "ROM (est.)": d["rom_estimate"],
+            "RAM (est.)": d["ram_estimate"],
+            "Notes": d.get("notes", ""),
+        }
         for c, d in MEMORY_FOOTPRINT_DATA.items()
     ]
     table = pd.DataFrame(rows)
@@ -510,14 +653,18 @@ def generate_energy_table(df):
         seen.add(key)
         cycles = row["mean"] * RP2040_MHZ / 1000
         energy_nj = cycles_to_nanojoules(cycles)
-        rows.append({
-            "Cipher": LABELS.get(row["group"], row["group"]),
-            "PT Length": row["pt"],
-            "Cycles (est.)": round(cycles),
-            "Energy (nJ)": round(energy_nj, 2),
-            "Energy (µJ)": round(energy_nj / 1000, 3),
-        })
-    table = pd.DataFrame(rows).sort_values(["Cipher", "PT Length"]).reset_index(drop=True)
+        rows.append(
+            {
+                "Cipher": LABELS.get(row["group"], row["group"]),
+                "PT Length": row["pt"],
+                "Cycles (est.)": round(cycles),
+                "Energy (nJ)": round(energy_nj, 2),
+                "Energy (µJ)": round(energy_nj / 1000, 3),
+            }
+        )
+    table = (
+        pd.DataFrame(rows).sort_values(["Cipher", "PT Length"]).reset_index(drop=True)
+    )
     table.to_csv(OUTPUT_DIR / "energy_footprint.csv", index=False)
     print("\nEnergy Footprint Table:\n", table.to_string(index=False))
     return table
@@ -555,30 +702,37 @@ def generate_latex_tables():
     mem_df = pd.read_csv(mem_csv)
     cols = ["Cipher", "Key Size", "Block Size", "Rounds", "ROM (est.)", "RAM (est.)"]
     tex = mem_df[cols].to_latex(
-        index=False, escape=True, column_format="@{}lccccr@{}",
-        caption="Memory Footprint Comparison", label="tab:memory",
+        index=False,
+        escape=True,
+        column_format="@{}lccccr@{}",
+        caption="Memory Footprint Comparison",
+        label="tab:memory",
     )
     (OUTPUT_DIR / "memory_footprint.tex").write_text(tex)
     print("Saved: memory_footprint.tex")
 
     energy_df = pd.read_csv(energy_csv)
     tex = energy_df.to_latex(
-        index=False, escape=True, column_format="@{}llccc@{}",
-        caption="Energy Consumption Estimates (RP2040 @ 133 MHz)", label="tab:energy",
+        index=False,
+        escape=True,
+        column_format="@{}llccc@{}",
+        caption="Energy Consumption Estimates (RP2040 @ 133 MHz)",
+        label="tab:energy",
     )
     (OUTPUT_DIR / "energy_footprint.tex").write_text(tex)
     print("Saved: energy_footprint.tex")
 
     if speedup_csv.exists():
         tex = pd.read_csv(speedup_csv).to_latex(
-            index=False, escape=True, column_format="@{}llc@{}",
-            caption="Speedup Relative to ASCON-AEAD", label="tab:speedup",
+            index=False,
+            escape=True,
+            column_format="@{}llc@{}",
+            caption="Speedup Relative to ASCON-AEAD",
+            label="tab:speedup",
         )
         (OUTPUT_DIR / "speedup.tex").write_text(tex)
         print("Saved: speedup.tex")
 
-
-# ── entry point ───────────────────────────────────────────────────────────────
 
 def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -589,23 +743,27 @@ def main():
 
     print("Loaded", len(df), "benchmarks")
 
-    # Two-panel overview plots (replaces the cluttered 12-line single-axes versions)
-    plot_metric_split(df, "throughput", "Throughput (MB/s)", "throughput_comparison",
-                      "Throughput Comparison")
-    plot_metric_split(df, "cpb", "Cycles per Byte", "cycles_per_byte",
-                      "Cycles per Byte Comparison")
+    plot_metric_split(
+        df,
+        "throughput",
+        "Throughput (MB/s)",
+        "throughput_comparison",
+        "Throughput Comparison",
+    )
+    plot_metric_split(
+        df, "cpb", "Cycles per Byte", "cycles_per_byte", "Cycles per Byte Comparison"
+    )
 
-    # Focused / paper-ready plots
     plot_fast_ciphers_comparison(df)
-    plot_present_modes(df)          # renamed + fixed (was present_ciphers_comparison)
+    plot_present_modes(df)
     plot_all_ciphers_loglog(df)
 
     plot_phases(df)
     plot_mode_overhead(df)
     plot_present_keysize_impact(df)
     plot_combined_comparison(df)
+    plot_power_consumption(df)
 
-    # Tables
     generate_memory_table()
     generate_energy_table(df)
     speedup_table(df)

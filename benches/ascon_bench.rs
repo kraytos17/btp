@@ -233,6 +233,7 @@ fn bench_present_modes(c: &mut Criterion) {
 
     present_group!("present-80-ecb", &cipher_80, present_modes::encrypt_ecb);
     present_group!("present-80-cbc", &cipher_80, present_modes::encrypt_cbc, iv);
+    present_group!("present-80-ctr", &cipher_80, present_modes::encrypt_ctr, iv);
     present_group!("present-128-ecb", &cipher_128, present_modes::encrypt_ecb);
     present_group!(
         "present-128-cbc",
@@ -240,6 +241,7 @@ fn bench_present_modes(c: &mut Criterion) {
         present_modes::encrypt_cbc,
         iv
     );
+    present_group!("present-128-ctr", &cipher_128, present_modes::encrypt_ctr, iv);
 }
 
 criterion_group! {

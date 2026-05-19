@@ -267,6 +267,24 @@ pub mod modes {
             iv.copy_from_slice(&ciphertext[i * 8..(i + 1) * 8]);
         }
     }
+
+    pub fn encrypt_ctr(cipher: &Present, plaintext: &[u8], ciphertext: &mut [u8], nonce: [u8; 8]) {
+        let block_size = 8;
+        let num_blocks = (plaintext.len() + block_size - 1) / block_size;
+        for i in 0..num_blocks {
+            let counter = (i as u32).to_le_bytes();
+            let mut counter_block = [0u8; 8];
+            counter_block[0..4].copy_from_slice(&nonce[0..4]);
+            counter_block[4..8].copy_from_slice(&counter);
+            
+            let encrypted_counter = cipher.encrypt_block(counter_block);
+            let start = i * block_size;
+            let end = (start + block_size).min(plaintext.len());
+            for j in 0..(end - start) {
+                ciphertext[start + j] = plaintext[start + j] ^ encrypted_counter[j];
+            }
+        }
+    }
 }
 
 pub mod test_vectors {
